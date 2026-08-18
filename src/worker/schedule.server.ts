@@ -29,6 +29,11 @@ export const SCHEDULES: ScheduleRule[] = [
     // change. Frequent enough that a game is captured well within the window in
     // which the widget still serves it.
     { kind: 'pbp-capture', everyMs: 6 * HOUR_MS },
+    // Offset from the capture it feeds on: a 7-hour period drifts against the
+    // 6-hour capture rather than racing it every cycle. Cheap when there is
+    // nothing new, because a game already parsed since its last capture is
+    // skipped outright.
+    { kind: 'pbp-parse', everyMs: 7 * HOUR_MS },
     // Clubs post charts on their own schedule through the week, so a 30-minute
     // sweep is the difference between a same-day alert and a next-day one.
     // Only the sweep is scheduled; it enqueues the per-club jobs itself.

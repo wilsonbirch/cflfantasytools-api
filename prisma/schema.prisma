@@ -109,28 +109,28 @@ model Team {
   Drives          Drive[]
   Plays           Play[]
   players         Player[]
-  homeMatches     Match[]  @relation("HomeMatches")
-  awayMatches     Match[]  @relation("AwayMatches")
+  homeMatches     Match[]                    @relation("HomeMatches")
+  awayMatches     Match[]                    @relation("AwayMatches")
 }
 
 // Scraper configuration as DATA, editable from the admin surface. In 3DF this
 // lived in 27 env vars plus nine hand-written scraper modules, which is why the
 // app silently kept scraping 2025 URLs into the 2026 season.
 model TeamSource {
-  id     Int    @id @default(autoincrement())
-  teamId Int
-  kind   String @default("depth-chart")
-  url    String
+  id              Int     @id @default(autoincrement())
+  teamId          Int
+  kind            String  @default("depth-chart")
+  url             String
   // Which extractor to run; see src/services/depthCharts/scrape/extractors.
-  strategy String
+  strategy        String
   // Strategy parameters (cell indexes, selectors, href filters, origin).
-  config   Json   @default("{}")
+  config          Json    @default("{}")
   // Only teams whose page needs JS pay for a Chromium launch.
   requiresBrowser Boolean @default(false)
   enabled         Boolean @default(true)
 
-  lastOkAt    DateTime?
-  lastError   String?
+  lastOkAt      DateTime?
+  lastError     String?
   lastItemCount Int?
 
   createdAt DateTime @default(now())
@@ -258,50 +258,88 @@ model EmailDelivery {
 }
 
 // ---------------------------------------------------------------------------
-// Play-by-play (ported from 3DF; dormant until the EPA phase)
+// Play-by-play
 // ---------------------------------------------------------------------------
+
+// Rule era, denormalized onto Game and Play so a model can filter without a
+// join. Derived from season year at parse time by ruleEraForYear(); see
+// docs/memory/project-cfl-rule-eras.md. NEVER pool eras in one fitted model —
+// 2026 changed the scoring label distribution (modified rouge) and 2027 changes
+// the yard-line domain itself (110 -> 100 yards).
+enum RuleEra {
+  PRE_2026
+  E2026
+  E2027
+}
+
+// Target zone, straight out of the play description ("pass complete short left
+// to ..."). Depth x direction is the axis the whole zone model is built on.
+enum PassDepth {
+  SHORT
+  DEEP
+}
+
+enum PassDirection {
+  LEFT
+  MIDDLE
+  RIGHT
+}
 
 // `id` is the external BetGenius fixture id, not a sequence. `response` holds
 // the raw widget payload — for 2024/2025 these blobs are the ONLY surviving
 // copy, since the upstream widget now serves current-season data only.
+//
+// The blob is retained after parsing on purpose: it makes the parser re-runnable,
+// so a parser bug is a re-parse rather than a data loss.
 model Game {
-  id        Int      @id
-  uuid      String   @unique @default(uuid())
+  id        Int       @id
+  uuid      String    @unique @default(uuid())
   response  String
   year      Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  ruleEra   RuleEra?
+  // Set when the parser last wrote Drive/Play rows for this game. Null means
+  // never parsed; a stale value against an updated `response` means re-parse.
+  parsedAt  DateTime?
+  // Number of plays written by the last successful parse.
+  playCount Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   Drives Drive[]
   Plays  Play[]
 
   @@index([year])
+  @@index([parsedAt])
 }
 
 model Drive {
-  id           Int      @id @default(autoincrement())
-  uuid         String   @unique @default(uuid())
-  gameId       Int
-  geniusTeamId String
-  number       Int
-  isScoring    Boolean  @default(false)
-  points       Int?
+  id               Int      @id @default(autoincrement())
+  uuid             String   @unique @default(uuid())
+  gameId           Int
+  geniusTeamId     String
+  number           Int
+  isScoring        Boolean  @default(false)
+  points           Int?
   // The Expected Points training label: points on the next scoring drive, signed
-  // relative to this drive's team.
+  // relative to this drive's team. Null means the drive reached the end of a
+  // half with no further score — an unusable training row, not a zero.
   nextPointOutcome Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // Which quarter the drive started in. Half boundaries end a scoring search,
+  // because a drive cannot be rewarded for points scored after the break.
+  startQuarter     Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  Game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  Team  Team  @relation(fields: [geniusTeamId], references: [geniusTeamId], onDelete: Cascade)
+  Game  Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  Team  Team   @relation(fields: [geniusTeamId], references: [geniusTeamId], onDelete: Cascade)
   Plays Play[]
 
   @@unique([gameId, number])
 }
 
 model Play {
-  id             Int      @id @default(autoincrement())
-  uuid           String   @unique @default(uuid())
+  id             Int     @id @default(autoincrement())
+  uuid           String  @unique @default(uuid())
   gameId         Int
   geniusTeamId   String
   driveId        Int
@@ -313,7 +351,7 @@ model Play {
   timestamp      BigInt
   phase          String
   phaseQualifier String
-  isScoring      Boolean  @default(false)
+  isScoring      Boolean @default(false)
   startPosition  String
   endPosition    String?
   down           Int?
@@ -323,14 +361,65 @@ model Play {
   kicker         String?
   passer         String?
   rusher         String?
+  // The intended TARGET of a pass, whether or not it was caught. A RECEPTION is
+  // `receiver != null AND isComplete` — NOT `subtype = 'CompletePass'`, which
+  // excludes every touchdown catch. See Play.isComplete.
   receiver       String?
+  // Kept separate from `receiver` deliberately. 3DF stored the kick returner in
+  // `receiver`, which would silently inflate every reception count.
+  returner       String?
   defense        String?
+  brokenUpBy     String?
   yardsGained    Int?
   puntYards      Int?
   returnYards    Int?
   epa            Float?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+
+  ruleEra RuleEra?
+
+  // --- target zone: the axis the OC/DC and projection models are built on ---
+  targetDepth     PassDepth?
+  targetDirection PassDirection?
+
+  // Yards in the air to the catch point ("caught at CGY38" / "thrown to CGY17"),
+  // measured from the line of scrimmage. Splits a completion into the quarterback's
+  // contribution and the receiver's: yardsAfterCatch = yardsGained - airYards.
+  airYards        Int?
+  yardsAfterCatch Int?
+
+  // "Shotgun", "No Huddle-Shotgun", "No Huddle".
+  formation String?
+
+  // Distance of a kick: field goal attempt length, punt yards, kickoff yards.
+  kickDistance Int?
+  // Field goal / convert only. Null on plays that are not a kick attempt.
+  kickIsGood   Boolean?
+
+  // Whether a pass was CAUGHT. Null on non-pass plays.
+  //
+  // Read from the description text rather than from `subtype`, because a caught
+  // touchdown is subtype "Touchdown" and a completion that also drew a flag is
+  // subtype "Penalty". Counting receptions off subtype alone loses 12% of
+  // completions, every touchdown catch among them — the difference between
+  // correct reconstructed fantasy points and quietly wrong ones.
+  isComplete  Boolean?
+  isFirstDown Boolean @default(false)
+  isTurnover  Boolean @default(false)
+  // A penalty wiped this snap ("NO PLAY"). It occupies no down and must be
+  // excluded from any expected-points fit.
+  isNoPlay    Boolean @default(false)
+
+  penaltyTeam  String?
+  penaltyName  String?
+  penaltyYards Int?
+
+  // Points scored ON THIS PLAY, signed positive for the play's own team. A
+  // touchdown is 6 and its convert is a SEPARATE play worth 1 or 2 — summing
+  // these over a drive gives the drive total exactly once.
+  points Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   Game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
   Drive Drive @relation(fields: [driveId], references: [id], onDelete: Cascade)
@@ -338,6 +427,11 @@ model Play {
 
   @@unique([gameId, driveId, number])
   @@index([type, down])
+  // The zone model's main read path: targets by zone within a rule era.
+  @@index([ruleEra, targetDepth, targetDirection])
+  @@index([receiver])
+  @@index([passer])
+  @@index([rusher])
 }
 
 // ---------------------------------------------------------------------------
@@ -410,31 +504,31 @@ enum PlayerPosition {
 }
 
 model Player {
-  id           Int            @id @default(autoincrement())
-  uuid         String         @unique @default(uuid())
+  id            Int            @id @default(autoincrement())
+  uuid          String         @unique @default(uuid())
   // Game Zone's own player id — the feed's stable key.
-  gameZoneId   Int            @unique
+  gameZoneId    Int            @unique
   // Upstream Genius feed id. The likely join into play-by-play participants,
   // though plays only name players as "#12 A.Smith" so resolution stays a
   // heuristic until proven.
-  feedId       Int?
-  firstName    String
-  lastName     String
-  teamId       Int?
-  position     PlayerPosition @default(OTHER)
-  status       String?
-  isLocked     Boolean        @default(false)
+  feedId        Int?
+  firstName     String
+  lastName      String
+  teamId        Int?
+  position      PlayerPosition @default(OTHER)
+  status        String?
+  isLocked      Boolean        @default(false)
   injuredTextEn String?
   // Absent from a feed pull for N consecutive syncs before being marked
   // inactive — never deleted.
-  isActive     Boolean        @default(true)
-  missedSyncs  Int            @default(0)
-  firstSeenAt  DateTime       @default(now())
-  lastSeenAt   DateTime       @default(now())
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  isActive      Boolean        @default(true)
+  missedSyncs   Int            @default(0)
+  firstSeenAt   DateTime       @default(now())
+  lastSeenAt    DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  Team      Team?                 @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  Team      Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
   snapshots PlayerStatSnapshot[]
   points    PlayerGameweekPoints[]
 
@@ -446,16 +540,16 @@ model Player {
 // every CHANGED payload because this is the one thing the feed cannot give us
 // retroactively — miss a week and that week's price movement is gone for good.
 model PlayerStatSnapshot {
-  id                Int      @id @default(autoincrement())
-  playerId          Int
-  year              Int
-  cost              Int?
-  avgPoints         Float?
-  projectedScores   Float?
-  weekSalaryChange  Int?
-  totalPoints       Float?
-  stats             Json
-  capturedAt        DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  playerId         Int
+  year             Int
+  cost             Int?
+  avgPoints        Float?
+  projectedScores  Float?
+  weekSalaryChange Int?
+  totalPoints      Float?
+  stats            Json
+  capturedAt       DateTime @default(now())
 
   Player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -463,8 +557,8 @@ model PlayerStatSnapshot {
 }
 
 model Gameweek {
-  id         Int      @id @default(autoincrement())
-  gameZoneId Int      @unique
+  id         Int       @id @default(autoincrement())
+  gameZoneId Int       @unique
   // Genius round id (gameweeks.json `feedId`); 2026 weeks run 1420012 upward.
   feedId     Int?
   name       String
@@ -472,8 +566,8 @@ model Gameweek {
   year       Int
   startDate  DateTime?
   endDate    DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   matches Match[]
   points  PlayerGameweekPoints[]
@@ -482,26 +576,26 @@ model Gameweek {
 }
 
 model Match {
-  id         Int       @id @default(autoincrement())
-  gameZoneId Int       @unique
-  gameweekId Int
-  homeTeamId Int?
-  awayTeamId Int?
-  homeScore  Int?
-  awayScore  Int?
-  status     String
-  venue      String?
-  date       DateTime?
-  year       Int
+  id              Int       @id @default(autoincrement())
+  gameZoneId      Int       @unique
+  gameweekId      Int
+  homeTeamId      Int?
+  awayTeamId      Int?
+  homeScore       Int?
+  awayScore       Int?
+  status          String
+  venue           String?
+  date            DateTime?
+  year            Int
   // Bridge to the BetGenius play-by-play. Populated by the PBP capture job,
   // which discovers ids from cfl.ca game pages.
-  geniusFixtureId Int? @unique
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  geniusFixtureId Int?      @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  Gameweek Gameweek @relation(fields: [gameweekId], references: [id], onDelete: Cascade)
-  HomeTeam Team?    @relation("HomeMatches", fields: [homeTeamId], references: [id], onDelete: SetNull)
-  AwayTeam Team?    @relation("AwayMatches", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  Gameweek Gameweek               @relation(fields: [gameweekId], references: [id], onDelete: Cascade)
+  HomeTeam Team?                  @relation("HomeMatches", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  AwayTeam Team?                  @relation("AwayMatches", fields: [awayTeamId], references: [id], onDelete: SetNull)
   points   PlayerGameweekPoints[]
 
   @@index([year, date])
