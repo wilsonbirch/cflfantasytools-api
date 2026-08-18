@@ -56,31 +56,42 @@ fly deploy
 
 ### Deploys are automatic
 
-`.github/workflows/deploy.yml` runs on every push to `main`: it applies pending
-migrations through a proxy, runs `fly deploy`, then polls `/health` until the
-new release answers. `workflow_dispatch` re-runs it by hand.
+`.github/workflows/deploy.yml` runs on every push to `main`: `fly deploy`, then
+polls `/health` until the new release answers, so a release Fly accepts but that
+cannot serve fails the run instead of going unnoticed. `workflow_dispatch`
+re-runs it by hand.
 
-It carries no test jobs. `main` requires the five CI contexts and has `strict`
-on, so a commit only lands after that exact tree went green on its PR.
-Re-testing here would be byte-identical duplication. **Remove those required checks and
-this workflow becomes unguarded**, and the suite has to move back into it.
+Migrations are **not** applied by CI. `fly.toml` sets a `[deploy]
+release_command` that runs `npx prisma migrate deploy` inside Fly, on the app
+image, with the app's own secrets — so no database password lives in GitHub, no
+tunnel is involved, and a failed migration aborts the release before any machine
+takes the new version.
 
-Two repo secrets feed it:
+That is why `prisma` and `dotenv` are runtime dependencies and why the runtime
+image carries `prisma/`, `prisma.config.ts` and `@prisma/engines`: the schema is
+driver-adapter based and holds no url, so the CLI needs the config to find
+`DATABASE_URL`. The engines directory is copied from the build stage and
+`chown`ed to `node` — the CLI refuses to start if it cannot write there, even
+when the engine is already present, and a deploy should not depend on reaching
+Prisma's CDN. Net cost is about 27MB on an image that already ships Chromium.
 
-| Secret          | What                                                                                                               |
-| --------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `FLY_API_TOKEN` | Two app-scoped deploy tokens, comma-joined — one for the API, one for the database. Deliberately not an org token. |
-| `DATABASE_URL`  | The `.flycast` URL with its host swapped for `127.0.0.1:15432`.                                                    |
+The workflow carries no test jobs. `main` requires the five CI contexts and has
+`strict` on, so a commit only lands after that exact tree went green on its PR.
+Re-testing here would be byte-identical duplication. **Remove those required
+checks and this workflow becomes unguarded**, and the suite has to move back in.
 
-⚠️ **Keep migrations additive.** Between the migrate step and the machines
-finishing their roll, the OLD code is live against the NEW schema. A migration
-that drops or renames a column the running release still reads will break
-production for the length of the deploy. Additive now, destructive in a later
-release once nothing reads the old shape.
+`FLY_API_TOKEN` is the only secret it needs — an app-scoped deploy token, not an
+org token, so it cannot reach anything else in the `personal` org.
+
+⚠️ **Keep migrations additive.** The release command runs before the machines
+roll, so the outgoing release serves against the new schema for the length of
+the deploy. A migration that drops or renames a column the running release still
+reads will break production until the roll finishes. Destructive changes belong
+in a later release, once nothing reads the old shape.
 
 Rolling back is `fly releases` to find the version, then
-`fly deploy --image <previous image>` — note that a rollback does NOT undo a
-migration, which is the other reason to keep them additive.
+`fly deploy --image <previous image>` — a rollback does NOT undo a migration,
+which is the other reason to keep them additive.
 
 ### Applying a migration
 

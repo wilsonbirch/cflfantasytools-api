@@ -6,10 +6,10 @@
 # If those required checks are ever removed, this workflow becomes unguarded and
 # the suite has to move back in.
 #
-# Migrations run BEFORE the code that needs them, from this runner through a
-# flyctl proxy, because the runtime image carries no Prisma CLI (Dockerfile
-# prunes devDeps). Keep migrations additive: between the migrate step and the
-# machines rolling, the OLD code is live against the NEW schema.
+# Migrations are NOT run here. fly.toml's [deploy] release_command applies them
+# inside Fly, on the app image, with the app's own secrets — so this workflow
+# needs no database password and no tunnel, and a failed migration aborts the
+# release before any machine takes the new version.
 name: Deploy
 
 on:
@@ -28,38 +28,11 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: 22
-                  cache: npm
-            - run: npm ci
-
             # Pinned to a SHA, not @master. This job holds a token that can
             # deploy production, the repo is public, and a mutable ref means a
             # compromise of that action runs attacker code with the token.
             # Bump deliberately: superfly/flyctl-actions master @ 2026-04-08.
             - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
-
-            # Postgres is not reachable from outside the org network, so the
-            # migration goes through a proxy. DATABASE_URL is the .flycast URL
-            # with its host swapped for 127.0.0.1:15432 — see the runbook in
-            # README.md.
-            - name: Apply migrations
-              env:
-                  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-                  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-              run: |
-                  flyctl proxy 15432:5432 -a cflfantasytools-db &
-                  for i in $(seq 1 30); do
-                      (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null && break
-                      sleep 1
-                  done
-                  (echo > /dev/tcp/127.0.0.1/15432) 2>/dev/null || {
-                      echo "::error::proxy to cflfantasytools-db never came up"
-                      exit 1
-                  }
-                  npx prisma migrate status
-                  npx prisma migrate deploy
 
             - name: Deploy
               env:
