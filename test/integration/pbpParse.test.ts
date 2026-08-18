@@ -28,6 +28,14 @@ async function seedTeams() {
 const seedGame = (year = 2026, response = PAYLOAD) =>
     db.game.create({ data: { id: FIXTURE_ID, response, year } })
 
+// The fixture cut down to its first n plays, standing in for a game captured
+// while it was still being played.
+function truncatedTo(n: number): string {
+    const payload = JSON.parse(PAYLOAD)
+    payload.data.playByPlayInfo.ALL = payload.data.playByPlayInfo.ALL.slice(0, n)
+    return JSON.stringify(payload)
+}
+
 describe('parseGame', () => {
     it('writes drives and plays for a real captured game', async () => {
         await seedTeams()
@@ -228,15 +236,30 @@ describe('parseStoredGames', () => {
         expect(await db.play.count()).toBe(138)
     })
 
-    it('picks a game back up after it is re-captured', async () => {
+    it('picks a game back up after its payload grows', async () => {
+        await seedTeams()
+        await seedGame(2026, truncatedTo(100))
+        expect((await parseStoredGames(2026)).plays).toBe(100)
+
+        // A live game re-captured mid-match: the same game, more plays.
+        await db.game.update({ where: { id: FIXTURE_ID }, data: { response: PAYLOAD } })
+
+        const second = await parseStoredGames(2026)
+        expect(second.games).toBe(1)
+        expect(second.plays).toBe(138)
+    })
+
+    it('leaves a game alone when a re-capture returns identical bytes', async () => {
         await seedTeams()
         await seedGame()
         await parseStoredGames(2026)
 
-        // A live game whose payload grew since the last parse.
+        // The capture ran again and found nothing new. Rewriting the same bytes
+        // touches the row — and used to be enough to re-parse the whole game,
+        // because staleness was judged by updatedAt rather than by content.
         await db.game.update({ where: { id: FIXTURE_ID }, data: { response: PAYLOAD } })
 
-        expect((await parseStoredGames(2026)).games).toBe(1)
+        expect((await parseStoredGames(2026)).games).toBe(0)
     })
 
     it('counts an empty fixture as skipped, not failed', async () => {

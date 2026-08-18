@@ -142,6 +142,10 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
             where: { id: gameId },
             data: { parsedAt: new Date(), playCount: written, ruleEra: era },
         })
+        // md5 computed by Postgres, not Node: the candidate query below compares
+        // against md5("response") server-side, and a hash produced by two
+        // different implementations is a bug waiting to happen over encoding.
+        await tx.$executeRaw`UPDATE "Game" SET "parsedHash" = md5("response") WHERE id = ${gameId}`
         return written
     })
 
@@ -152,25 +156,36 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
  * Parse every stored game that needs it.
  *
  * `force` re-parses games already parsed, which is what a parser change needs.
- * Without it, only games never parsed or captured again since their last parse
- * are touched — the common case, and cheap enough to run on a schedule.
+ * Without it, only games whose stored payload differs from the one they were
+ * last parsed from are touched — the common case, and cheap enough to run on a
+ * schedule.
  */
 export async function parseStoredGames(year?: number, force = false): Promise<ParseAllSummary> {
     const summary: ParseAllSummary = { games: 0, drives: 0, plays: 0, failed: 0, skipped: 0 }
 
-    const candidates = await db.game.findMany({
-        where: year === undefined ? {} : { year },
-        select: { id: true, parsedAt: true, updatedAt: true },
-        orderBy: { id: 'asc' },
-    })
-
-    // Filtered here rather than in SQL: comparing two columns needs a field
-    // reference, and the set is small enough (hundreds of rows) that the clarity
-    // is worth more than the round trip. A game re-captured since its last parse
-    // has updatedAt > parsedAt and is picked up again.
-    const games = force
-        ? candidates
-        : candidates.filter((g) => g.parsedAt === null || g.updatedAt > g.parsedAt)
+    // Staleness is a payload question, not a clock question: a game needs
+    // re-parsing when its `response` differs from the one it was parsed from.
+    //
+    // The comparison runs in SQL because the alternative — pulling every
+    // `response` blob into Node to hash it — moves megabytes per run to answer
+    // "did anything change". `IS DISTINCT FROM` rather than `<>` so a NULL hash
+    // (never parsed) counts as stale.
+    const games: { id: number }[] = force
+        ? await db.game.findMany({
+              where: year === undefined ? {} : { year },
+              select: { id: true },
+              orderBy: { id: 'asc' },
+          })
+        : year === undefined
+          ? await db.$queryRaw`
+                SELECT id FROM "Game"
+                WHERE "parsedHash" IS DISTINCT FROM md5("response")
+                ORDER BY id ASC`
+          : await db.$queryRaw`
+                SELECT id FROM "Game"
+                WHERE year = ${year}
+                  AND "parsedHash" IS DISTINCT FROM md5("response")
+                ORDER BY id ASC`
 
     for (const { id } of games) {
         try {

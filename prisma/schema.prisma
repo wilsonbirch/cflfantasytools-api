@@ -297,9 +297,15 @@ model Game {
   response  String
   year      Int
   ruleEra   RuleEra?
-  // Set when the parser last wrote Drive/Play rows for this game. Null means
-  // never parsed; a stale value against an updated `response` means re-parse.
+  // Set when the parser last wrote Drive/Play rows for this game. Informational
+  // only — `parsedHash` decides whether a re-parse is needed.
   parsedAt  DateTime?
+  // md5 of the `response` this game was last parsed from. Null means never
+  // parsed; a value differing from md5(response) means the payload changed and
+  // the game needs re-parsing. Deliberately NOT a timestamp comparison: writing
+  // parsedAt bumps @updatedAt on the same row, so updatedAt > parsedAt was
+  // always true and every game re-parsed on every run.
+  parsedHash String?
   // Number of plays written by the last successful parse.
   playCount Int?
   createdAt DateTime  @default(now())
