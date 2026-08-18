@@ -27,13 +27,30 @@ RUN apt-get update \
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# --ignore-scripts skips postinstall (the prisma CLI is a devDep and absent here);
-# the generated client is copied from the build stage instead.
+# --ignore-scripts skips postinstall: the prisma CLI is present now, but the
+# generated client is copied from the build stage rather than re-generated.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=build /app/src ./src
 COPY --from=build /app/tsconfig.json ./
+
+# The Fly release command runs `prisma migrate deploy` from this image, so the
+# migration history and the config that carries DATABASE_URL to the CLI have to
+# be here. `prisma` and `dotenv` are runtime deps for the same reason — the
+# schema is driver-adapter based and holds no url of its own.
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma.config.ts ./
+
+# The schema engine `migrate deploy` needs. --ignore-scripts above skipped the
+# download, and the CLI cannot fetch it at release time: it runs as USER node
+# against a root-owned /app, and a deploy should not depend on the network
+# reaching Prisma's CDN anyway. Taken from the build stage, which did download it.
+COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+
+# The CLI refuses to start if it cannot write here, even when the engine is
+# already in place — it checks the directory before deciding it needs nothing.
+RUN chown -R node:node /app/node_modules/@prisma/engines
 
 USER node
 EXPOSE 4000

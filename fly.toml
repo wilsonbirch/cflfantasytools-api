@@ -20,6 +20,17 @@ kill_timeout = '300s'
 [build]
   dockerfile = 'Dockerfile'
 
+# Migrations run here, not from CI. Fly executes this in a temporary machine on
+# the app image with the app's secrets, so DATABASE_URL is the internal .flycast
+# URL and no proxy, no org-scoped token and no copy of the database password in
+# GitHub are involved. A non-zero exit aborts the release before any machine
+# takes the new version.
+#
+# KEEP MIGRATIONS ADDITIVE. This runs before the machines roll, so the outgoing
+# release serves against the new schema for the length of the deploy.
+[deploy]
+  release_command = 'npx prisma migrate deploy'
+
 # Direct node (no npm/tsx wrapper): Fly's SIGTERM must reach the app's own
 # handler for a graceful drain — wrappers forward signals racily.
 [processes]
