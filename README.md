@@ -54,13 +54,49 @@ fly secrets import < .fly.secrets.env
 fly deploy
 ```
 
-Migrations are applied from a workstation through a proxy, since the runtime
-image carries no Prisma CLI:
+### Applying a migration
+
+Migrations run from a workstation through a proxy, since the runtime image
+carries no Prisma CLI. The database and the role are both named
+`cflfantasytools_api` — `fly postgres attach` names them after the app.
+
+The password is not recoverable from `fly secrets list`, which prints digests
+only. Read it off a running machine instead, where it is an ordinary env var:
+
+```bash
+fly ssh console -a cflfantasytools-api -C "printenv DATABASE_URL"
+# postgres://cflfantasytools_api:PASSWORD@cflfantasytools-db.flycast:5432/cflfantasytools_api?sslmode=disable
+```
+
+Swap the host for the proxy and keep `?sslmode=disable` — the proxy is a plain
+TCP tunnel and the server does not offer TLS on it:
 
 ```bash
 fly proxy 15432:5432 -a cflfantasytools-db &
-DATABASE_URL="postgres://...@127.0.0.1:15432/cflfantasytools_api" npx prisma migrate deploy
+npx prisma migrate status                      # confirm what is pending
+npx prisma migrate deploy
+npx prisma migrate status                      # "Database schema is up to date!"
+kill %1                                        # close the tunnel when done
 ```
+
+⚠️ **`migrate deploy`, never `migrate dev`.** `deploy` only applies pending
+migrations; `dev` diffs the schema and will offer to reset the database.
+
+⚠️ **A `.env` holding the proxy URL points at production.** Only the port digit
+separates it from a local database, so while the tunnel is up, `db:seed`,
+`db:studio` and `db:migrate` all hit prod. Prefer passing the URL inline, or
+keep it in a `.env.prod` you source deliberately:
+
+```bash
+DATABASE_URL="postgres://cflfantasytools_api:PASSWORD@127.0.0.1:15432/cflfantasytools_api?sslmode=disable" \
+  npx prisma migrate deploy
+```
+
+Review the SQL before applying. Additive changes — new tables, nullable columns,
+new enums — are safe to apply while `web` serves traffic; Postgres adds a
+`NOT NULL DEFAULT` column as metadata only, without rewriting the table. A
+non-concurrent `CREATE INDEX` locks the table against writes while it builds,
+which is fine at this size but will not stay fine.
 
 Two process groups run from one image: `web` (GraphQL + `/health`) and `worker`.
 
