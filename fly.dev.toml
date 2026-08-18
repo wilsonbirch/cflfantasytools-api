@@ -23,6 +23,11 @@ kill_timeout = '300s'
   worker = 'node --import tsx src/worker/index.ts'
 
 [env]
+  # The worker keeps its own schedule in-process and must stay up to do it.
+  # A Fly machine schedule was the alternative, and on the other projects here
+  # one silently stopped firing for five days — unacceptable for a capture job
+  # whose whole purpose is not missing a week.
+  WORKER_IDLE_EXIT_MS = '0'
   NODE_ENV = 'development'
   API_PORT = '4000'
 
@@ -41,10 +46,10 @@ kill_timeout = '300s'
     timeout = '3s'
     grace_period = '10s'
 
-# The worker exits 0 when idle (machine stops, minutes-only billing); only
-# crashes restart it.
+# The worker no longer idle-exits (WORKER_IDLE_EXIT_MS=0), so restart it if it
+# ever does stop — a stopped worker means capture has silently halted.
 [[restart]]
-  policy = 'on-failure'
+  policy = 'always'
   processes = ['worker']
 
 [[vm]]
