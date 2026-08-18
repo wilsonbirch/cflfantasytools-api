@@ -89,3 +89,41 @@ describe('job queue', () => {
         expect(await jobClaimNext()).toBeNull()
     })
 })
+
+describe('jobHealth', () => {
+    it('reports a never-run job as stale', async () => {
+        const r = await executeOperation<{
+            jobHealth: { kind: string; isStale: boolean; ageMinutes: number | null }[]
+        }>({ query: '{ jobHealth { kind isStale ageMinutes expectedEveryMinutes } }' })
+
+        expect(r.errors).toBeUndefined()
+        const sync = r.data?.jobHealth.find((h) => h.kind === 'gamezone-sync')
+        // Nothing has run in a fresh database — exactly the condition worth
+        // surfacing on a new deploy.
+        expect(sync?.isStale).toBe(true)
+        expect(sync?.ageMinutes).toBeNull()
+    })
+
+    it('reports a recently succeeded job as fresh', async () => {
+        const { db } = await import('~/lib/db.server')
+        await db.job.create({
+            data: {
+                kind: 'gamezone-sync',
+                status: 'SUCCEEDED',
+                finishedAt: new Date(Date.now() - 5 * 60_000),
+            },
+        })
+
+        const r = await executeOperation<{ jobHealth: { kind: string; isStale: boolean }[] }>({
+            query: '{ jobHealth { kind isStale } }',
+        })
+        expect(r.data?.jobHealth.find((h) => h.kind === 'gamezone-sync')?.isStale).toBe(false)
+    })
+
+    it('is readable without authentication', async () => {
+        // Job names and timestamps only — being able to check "is capture still
+        // running" without credentials is the point.
+        const r = await executeOperation({ query: '{ jobHealth { kind } }' })
+        expect(r.errors).toBeUndefined()
+    })
+})
