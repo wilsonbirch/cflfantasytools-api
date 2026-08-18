@@ -34,7 +34,11 @@ jobs:
                   cache: npm
             - run: npm ci
 
-            - uses: superfly/flyctl-actions/setup-flyctl@master
+            # Pinned to a SHA, not @master. This job holds a token that can
+            # deploy production, the repo is public, and a mutable ref means a
+            # compromise of that action runs attacker code with the token.
+            # Bump deliberately: superfly/flyctl-actions master @ 2026-04-08.
+            - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
 
             # Postgres is not reachable from outside the org network, so the
             # migration goes through a proxy. DATABASE_URL is the .flycast URL
