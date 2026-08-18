@@ -5,6 +5,16 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
+# The build stage only needs `prisma generate`; it never launches a browser, and
+# the runtime stage uses the system Chromium installed below rather than anything
+# downloaded here. Skipping the download keeps a browser out of this layer.
+#
+# This is load-bearing as of puppeteer 25: @puppeteer/browsers 3 dropped its
+# bundled `extract-zip` for `modern-tar`, so unpacking Chrome's .zip now needs a
+# system `unzip` — which node:*-bookworm-slim does not ship. Without this the
+# postinstall fails with "no zip archiver is available" and `npm ci` exits 1.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
 # Deps first for layer caching. prisma.config.ts + the schema are needed by the
 # postinstall generate.
 COPY package.json package-lock.json prisma.config.ts ./
