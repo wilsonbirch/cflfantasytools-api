@@ -1,5 +1,6 @@
 import { wakeWorker } from '~/lib/flyMachines.server'
 import { logger } from '~/lib/logger.server'
+import { jobHasPending } from '~/dao/job.server'
 import { enqueueDueSchedules } from '~/worker/loop'
 import { SCHEDULES } from '~/worker/schedule.server'
 import { jobStaleness } from './staleness.server'
@@ -20,10 +21,16 @@ let timer: NodeJS.Timeout | undefined
 export async function runScheduleTick(): Promise<void> {
     try {
         const enqueued = await enqueueDueSchedules(SCHEDULES)
-        if (enqueued > 0) {
-            logger.info(fileName, `enqueued ${enqueued} scheduled job(s); waking worker`)
-            await wakeWorker()
-        }
+        if (enqueued > 0) logger.info(fileName, `enqueued ${enqueued} scheduled job(s)`)
+
+        // Wake on PENDING WORK, not on "this tick enqueued something".
+        //
+        // Waking only after an enqueue strands a job permanently the first time
+        // a wake fails: the schedule will not re-enqueue a kind that already has
+        // a recent row, so nothing ever tries again and the queue sits full with
+        // the worker asleep. Observed in production within minutes of deploy —
+        // depth-chart-sweep sat PENDING with 0 attempts.
+        if (await jobHasPending()) await wakeWorker()
 
         for (const h of (await jobStaleness()).filter((x) => x.isStale)) {
             logger.error(
