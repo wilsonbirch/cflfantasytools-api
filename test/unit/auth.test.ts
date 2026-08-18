@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
     __setSecretForTest,
     generateRefreshToken,
@@ -73,5 +73,35 @@ describe('refresh tokens', () => {
         expect(
             refreshTokensMatch(generateRefreshToken(), hashRefreshToken(generateRefreshToken())),
         ).toBe(false)
+    })
+})
+
+describe('configuration', () => {
+    it('fails loudly when AUTH_JWT_SECRET is unset rather than signing with a default', async () => {
+        // A fresh module instance, so the cached secret from beforeAll is gone.
+        vi.resetModules()
+        const original = process.env.AUTH_JWT_SECRET
+        delete process.env.AUTH_JWT_SECRET
+        try {
+            const fresh = await import('~/lib/auth.server')
+            await expect(fresh.signAccessToken(claims)).rejects.toThrow(/AUTH_JWT_SECRET/)
+        } finally {
+            if (original !== undefined) process.env.AUTH_JWT_SECRET = original
+        }
+    })
+    it('reads the secret from the environment when one is configured', async () => {
+        // The other tests inject via __setSecretForTest, which bypasses the env
+        // read entirely — this is the path production actually takes.
+        vi.resetModules()
+        const original = process.env.AUTH_JWT_SECRET
+        process.env.AUTH_JWT_SECRET = 'secret-from-the-environment'
+        try {
+            const fresh = await import('~/lib/auth.server')
+            const token = await fresh.signAccessToken(claims)
+            expect((await fresh.verifyAccessToken(token)).sub).toBe(claims.accountUuid)
+        } finally {
+            if (original === undefined) delete process.env.AUTH_JWT_SECRET
+            else process.env.AUTH_JWT_SECRET = original
+        }
     })
 })
