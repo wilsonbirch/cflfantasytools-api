@@ -57,10 +57,36 @@ export async function tickOnce(
 export type WorkerSessionOptions = {
     handlers: Record<string, JobHandler>
     pollMs?: number
-    // 0 = never exit (local `dev:worker` watch mode).
+    // 0 = never exit (an always-on worker, and local `dev:worker` watch mode).
     idleExitMs?: number
     isStopping?: () => boolean
     schedules?: ScheduleRule[]
+    // How often to re-check the schedule while the session stays up.
+    scheduleCheckMs?: number
+}
+
+/**
+ * Enqueue whatever the schedule says is due right now.
+ *
+ * Called at boot AND periodically while the session runs. The periodic part
+ * matters: a worker that only checked at boot would depend on something else
+ * waking it on a timer, and a silently dead wake is exactly how 3DF's capture
+ * job ran once in November 2024 and never again, losing the whole 2025 season.
+ * Re-checking in-process means an always-on worker keeps its own schedule.
+ */
+export async function enqueueDueSchedules(
+    schedules: ScheduleRule[],
+    now = new Date(),
+): Promise<number> {
+    const lastCreated: Record<string, Date | null> = {}
+    for (const rule of schedules) lastCreated[rule.kind] = await jobLastCreatedAt(rule.kind)
+    let enqueued = 0
+    for (const kind of dueScheduledKinds(now, lastCreated, schedules)) {
+        await jobEnqueue(kind)
+        logger.info(fileName, `enqueued scheduled ${kind}`)
+        enqueued += 1
+    }
+    return enqueued
 }
 
 /**
@@ -76,23 +102,26 @@ export async function runWorkerSession({
     idleExitMs = 60_000,
     isStopping = () => false,
     schedules = SCHEDULES,
+    scheduleCheckMs = 60_000,
 }: WorkerSessionOptions): Promise<void> {
     const now = new Date()
-    const lastCreated: Record<string, Date | null> = {}
-    for (const rule of schedules) lastCreated[rule.kind] = await jobLastCreatedAt(rule.kind)
-    for (const kind of dueScheduledKinds(now, lastCreated, schedules)) {
-        await jobEnqueue(kind)
-        logger.info(fileName, `enqueued scheduled ${kind}`)
-    }
+    await enqueueDueSchedules(schedules, now)
     const pruned = await jobPruneFinished(new Date(now.getTime() - PRUNE_AFTER_MS))
     if (pruned > 0) logger.info(fileName, `pruned ${pruned} finished jobs`)
 
     let lastWorkAt = Date.now()
+    let lastScheduleCheck = Date.now()
     while (!isStopping()) {
         const processed = await tickOnce(handlers, isStopping)
         if (processed > 0) {
             lastWorkAt = Date.now()
             continue
+        }
+        // Re-check the schedule so a long-lived session keeps firing recurring
+        // rules rather than only the ones due at boot.
+        if (Date.now() - lastScheduleCheck >= scheduleCheckMs) {
+            lastScheduleCheck = Date.now()
+            if ((await enqueueDueSchedules(schedules)) > 0) continue
         }
         if (idleExitMs > 0 && Date.now() - lastWorkAt >= idleExitMs && !(await jobHasPending())) {
             logger.info(fileName, `queue empty for ${idleExitMs}ms; idle-exiting`)

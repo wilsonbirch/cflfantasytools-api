@@ -125,3 +125,37 @@ describe('concurrent claims', () => {
         expect(await db.job.count({ where: { status: 'RUNNING' } })).toBe(1)
     })
 })
+
+describe('recurring schedules', () => {
+    it('enqueues a rule that has never run', async () => {
+        const { enqueueDueSchedules } = await import('~/worker/loop')
+        const n = await enqueueDueSchedules([{ kind: 'gamezone-sync', everyMs: 60_000 }])
+        expect(n).toBe(1)
+        expect(await db.job.count({ where: { kind: 'gamezone-sync' } })).toBe(1)
+    })
+
+    it('does not re-enqueue inside the interval', async () => {
+        const { enqueueDueSchedules } = await import('~/worker/loop')
+        const rules = [{ kind: 'gamezone-sync', everyMs: 60 * 60_000 }]
+        await enqueueDueSchedules(rules)
+        expect(await enqueueDueSchedules(rules)).toBe(0)
+    })
+
+    it('enqueues again once the interval has elapsed, WITHOUT a reboot', async () => {
+        const { enqueueDueSchedules } = await import('~/worker/loop')
+        const rules = [{ kind: 'gamezone-sync', everyMs: 60 * 60_000 }]
+        await enqueueDueSchedules(rules)
+
+        // Age the existing row past the interval.
+        await db.job.updateMany({
+            where: { kind: 'gamezone-sync' },
+            data: { createdAt: new Date(Date.now() - 2 * 60 * 60_000) },
+        })
+
+        // The whole point: a long-lived session keeps firing recurring rules
+        // instead of only the ones that were due when it booted. 3DF's capture
+        // job ran once and never again, which is how the 2025 season was lost.
+        expect(await enqueueDueSchedules(rules)).toBe(1)
+        expect(await db.job.count({ where: { kind: 'gamezone-sync' } })).toBe(2)
+    })
+})
