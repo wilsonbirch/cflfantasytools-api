@@ -108,6 +108,9 @@ model Team {
   scrapeRuns      ScrapeRun[]
   Drives          Drive[]
   Plays           Play[]
+  players         Player[]
+  homeMatches     Match[]  @relation("HomeMatches")
+  awayMatches     Match[]  @relation("AwayMatches")
 }
 
 // Scraper configuration as DATA, editable from the admin surface. In 3DF this
@@ -365,4 +368,158 @@ model Job {
 
   @@index([status, runAt])
   @@index([kind, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// CFL Game Zone feeds
+//
+// Three public, unauthenticated JSON feeds on gamezone.cfl.ca supply the player
+// dimension 3DF never had, plus schedule and results. They are undocumented and
+// unversioned, so ingestion validates shape, keeps the last good snapshot on a
+// parse failure, and never deletes — a truncated feed must not be able to wipe
+// 700 players.
+// ---------------------------------------------------------------------------
+
+enum FeedStatus {
+  OK
+  UNCHANGED
+  INVALID
+  FETCH_FAILED
+}
+
+// One row per fetch attempt. The sha256 lets an unchanged payload short-circuit,
+// and retaining the payload means a bad deploy can be diagnosed after the fact.
+model FeedSnapshot {
+  id        Int        @id @default(autoincrement())
+  source    String
+  sha256    String
+  status    FeedStatus
+  payload   Json?
+  error     String?
+  itemCount Int?
+  fetchedAt DateTime   @default(now())
+
+  @@index([source, fetchedAt])
+}
+
+enum PlayerPosition {
+  QUARTERBACK
+  RUNNING_BACK
+  WIDE_RECEIVER
+  OTHER
+}
+
+model Player {
+  id           Int            @id @default(autoincrement())
+  uuid         String         @unique @default(uuid())
+  // Game Zone's own player id — the feed's stable key.
+  gameZoneId   Int            @unique
+  // Upstream Genius feed id. The likely join into play-by-play participants,
+  // though plays only name players as "#12 A.Smith" so resolution stays a
+  // heuristic until proven.
+  feedId       Int?
+  firstName    String
+  lastName     String
+  teamId       Int?
+  position     PlayerPosition @default(OTHER)
+  status       String?
+  isLocked     Boolean        @default(false)
+  injuredTextEn String?
+  // Absent from a feed pull for N consecutive syncs before being marked
+  // inactive — never deleted.
+  isActive     Boolean        @default(true)
+  missedSyncs  Int            @default(0)
+  firstSeenAt  DateTime       @default(now())
+  lastSeenAt   DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  Team      Team?                 @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  snapshots PlayerStatSnapshot[]
+  points    PlayerGameweekPoints[]
+
+  @@index([teamId, position])
+  @@index([lastName])
+}
+
+// Salary, projection and cumulative stat line as of a point in time. Captured on
+// every CHANGED payload because this is the one thing the feed cannot give us
+// retroactively — miss a week and that week's price movement is gone for good.
+model PlayerStatSnapshot {
+  id                Int      @id @default(autoincrement())
+  playerId          Int
+  year              Int
+  cost              Int?
+  avgPoints         Float?
+  projectedScores   Float?
+  weekSalaryChange  Int?
+  totalPoints       Float?
+  stats             Json
+  capturedAt        DateTime @default(now())
+
+  Player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, capturedAt])
+}
+
+model Gameweek {
+  id         Int      @id @default(autoincrement())
+  gameZoneId Int      @unique
+  // Genius round id (gameweeks.json `feedId`); 2026 weeks run 1420012 upward.
+  feedId     Int?
+  name       String
+  status     String
+  year       Int
+  startDate  DateTime?
+  endDate    DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  matches Match[]
+  points  PlayerGameweekPoints[]
+
+  @@index([year])
+}
+
+model Match {
+  id         Int       @id @default(autoincrement())
+  gameZoneId Int       @unique
+  gameweekId Int
+  homeTeamId Int?
+  awayTeamId Int?
+  homeScore  Int?
+  awayScore  Int?
+  status     String
+  venue      String?
+  date       DateTime?
+  year       Int
+  // Bridge to the BetGenius play-by-play. Populated by the PBP capture job,
+  // which discovers ids from cfl.ca game pages.
+  geniusFixtureId Int? @unique
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  Gameweek Gameweek @relation(fields: [gameweekId], references: [id], onDelete: Cascade)
+  HomeTeam Team?    @relation("HomeMatches", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  AwayTeam Team?    @relation("AwayMatches", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  points   PlayerGameweekPoints[]
+
+  @@index([year, date])
+}
+
+// Fantasy points per player per gameweek, keyed by both the gameweek and (where
+// known) the specific match.
+model PlayerGameweekPoints {
+  id         Int   @id @default(autoincrement())
+  playerId   Int
+  gameweekId Int
+  matchId    Int?
+  points     Float
+
+  Player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  Gameweek Gameweek @relation(fields: [gameweekId], references: [id], onDelete: Cascade)
+  Match    Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@unique([playerId, gameweekId])
+  @@index([gameweekId])
 }
