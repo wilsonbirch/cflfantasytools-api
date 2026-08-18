@@ -1,0 +1,113 @@
+version: 2
+updates:
+    - package-ecosystem: 'npm'
+      directory: '/'
+      schedule:
+          interval: 'weekly'
+      open-pull-requests-limit: 10
+      groups:
+          # Coupled stacks come FIRST — a group earlier in this list wins the
+          # package, and minor-and-patch below would otherwise claim their
+          # minor/patch bumps and split the stack across PRs.
+          #
+          # Every coupled group sets update-types explicitly. Dependabot
+          # defaults a group to [minor, patch], which lets a solo major escape
+          # the group — that is exactly how a @pothos/core 3 -> 4 bump once
+          # landed on its own and left the v3 plugins calling into v4
+          # internals. The ignore list below blocks these majors today, so the
+          # explicit major here is what keeps them batched if an ignore is ever
+          # lifted.
+          graphql:
+              patterns:
+                  - 'graphql'
+                  - 'graphql-yoga'
+                  - 'graphql-scalars'
+                  - '@pothos/*'
+              update-types:
+                  - 'major'
+                  - 'minor'
+                  - 'patch'
+          # The CLI, the client and the driver adapter are one release train:
+          # @prisma/adapter-pg talks to client internals, and `prisma migrate`
+          # writes a migration format the client has to read. A partial bump
+          # here breaks either generate or the Fly release command.
+          prisma:
+              patterns:
+                  - 'prisma'
+                  - '@prisma/*'
+              update-types:
+                  - 'major'
+                  - 'minor'
+                  - 'patch'
+          # vitest and @vitest/coverage-v8 are peer-locked to the same version;
+          # bumping one alone fails the install.
+          vitest:
+              patterns:
+                  - 'vitest'
+                  - '@vitest/*'
+              update-types:
+                  - 'major'
+                  - 'minor'
+                  - 'patch'
+          # Everything else non-major in one PR to cut noise. Majors still
+          # arrive individually so they get read.
+          minor-and-patch:
+              update-types:
+                  - 'minor'
+                  - 'patch'
+          # Advisory-driven PRs bypass every version-update group above — a
+          # group only claims security updates when applies-to says so. Without
+          # this, one advisory wave arrives as N solo PRs, each needing its own
+          # branch update and CI cycle.
+          security:
+              applies-to: security-updates
+              patterns:
+                  - '*'
+      ignore:
+          # @types/node tracks the Node runtime, which is 22 in both the
+          # Dockerfile and ci.yml. Bump it by hand when the runtime moves.
+          - dependency-name: '@types/node'
+            update-types: ['version-update:semver-major']
+          # graphql 17 is capped by peer ranges across the stack — yoga,
+          # scalars and @pothos/plugin-prisma all pin ^16. Lift this and the
+          # graphql group above bumps them together in one PR.
+          - dependency-name: 'graphql'
+            update-types: ['version-update:semver-major']
+          # typescript 7 is the native compiler rewrite: the classic
+          # `require('typescript')` Compiler API that @pothos/plugin-prisma's
+          # generator calls is gone, and typescript-eslint hard-caps its peer
+          # range below it. Hold until both ship TS7 support.
+          - dependency-name: 'typescript'
+            update-types: ['version-update:semver-major']
+          # Prisma 7 is driver-adapter based and exposes no DMMF, which
+          # builder.ts and the schema are written against. A major is a
+          # migration, not an upgrade.
+          - dependency-name: 'prisma'
+            update-types: ['version-update:semver-major']
+          - dependency-name: '@prisma/client'
+            update-types: ['version-update:semver-major']
+          - dependency-name: '@prisma/adapter-pg'
+            update-types: ['version-update:semver-major']
+          # Pothos plugins are version-locked to core's major — a plugin built
+          # against v4 internals cannot run on v5. Do that migration by hand,
+          # all packages at once.
+          - dependency-name: '@pothos/core'
+            update-types: ['version-update:semver-major']
+          - dependency-name: '@pothos/plugin-errors'
+            update-types: ['version-update:semver-major']
+          - dependency-name: '@pothos/plugin-prisma'
+            update-types: ['version-update:semver-major']
+
+    # Keeps actions/checkout, actions/setup-node and the SHA-pinned flyctl
+    # action current. Dependabot understands SHA pins and rewrites both the SHA
+    # and its trailing version comment.
+    - package-ecosystem: 'github-actions'
+      directory: '/'
+      schedule:
+          interval: 'weekly'
+      open-pull-requests-limit: 5
+      groups:
+          actions-minor-and-patch:
+              update-types:
+                  - 'minor'
+                  - 'patch'
