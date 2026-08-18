@@ -94,6 +94,16 @@ describe('fetchFeed', () => {
         expect(snap.payload).not.toBeNull()
     })
 
+    it('records INVALID when the body is not JSON at all', async () => {
+        const notJson = vi.fn(
+            async () => new Response('<html>maintenance</html>', { status: 200 }),
+        ) as unknown as typeof fetch
+        const r = await fetchFeed('squads', notJson)
+        expect(r.status).toBe('INVALID')
+        // An HTML error page served with a 200 is a real failure mode for S3.
+        expect(r.status === 'INVALID' && r.error).toMatch(/not JSON/)
+    })
+
     it('records FETCH_FAILED when the feed is unreachable', async () => {
         const failing = vi.fn(async () => {
             throw new Error('ECONNREFUSED')

@@ -24,6 +24,11 @@ export const SCHEDULES: ScheduleRule[] = [
     // the feed exposes only the current value, so an unrecorded week's price
     // movement is gone permanently. 3DF lost the entire 2025 season this way.
     { kind: 'gamezone-sync', everyMs: HOUR_MS },
+    // Every six hours. Slower than the feed sync because it reads ~80 cfl.ca
+    // game pages per run, and because a finished game's play-by-play does not
+    // change. Frequent enough that a game is captured well within the window in
+    // which the widget still serves it.
+    { kind: 'pbp-capture', everyMs: 6 * HOUR_MS },
 ]
 
 const isDue = (rule: ScheduleRule, now: Date, lastCreated: Date | null): boolean => {
