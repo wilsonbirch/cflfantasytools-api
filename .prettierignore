@@ -1,0 +1,7 @@
+# Generated / build output — not ours to format.
+node_modules
+dist
+coverage
+src/generated
+schema.graphql
+package-lock.json

@@ -1,0 +1,97 @@
+# CI — pull requests only. Pushes to main are not re-tested: branch protection
+# requires the branch to be up to date before merging, so the merge commit's tree
+# is byte-identical to what the PR run already tested.
+#
+# Five jobs, no `needs:` chains — fastest signal wins.
+name: CI
+
+on:
+    pull_request:
+    workflow_dispatch:
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run lint
+            - run: npm run format:check
+
+    typecheck:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run typecheck
+            # schema.graphql is the codegen input for BOTH web and native. Fail
+            # the PR if the committed SDL has drifted from the Pothos schema —
+            # this is the cross-repo contract.
+            - run: npm run schema:print
+            - run: git diff --exit-code schema.graphql
+
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            # Unit + integration (Testcontainers Postgres on the preinstalled
+            # Docker daemon), with the coverage thresholds from vitest.config.ts.
+            - run: npm run test:coverage
+
+    smoke:
+        runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: postgres:16
+                env:
+                    POSTGRES_PASSWORD: postgres
+                    POSTGRES_DB: cflft_smoke
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd "pg_isready -U postgres"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 10
+        env:
+            DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cflft_smoke?schema=public
+            API_PORT: '4100'
+            AUTH_JWT_SECRET: ci-auth-secret
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npx prisma migrate deploy
+            # Boots the real entrypoints. Catches what the in-process suite cannot:
+            # ESM resolution, Prisma failing to connect at startup, bad port
+            # handling, and the worker's SIGTERM contract.
+            - run: npm run boot-smoke
+            - run: npm run boot-smoke:worker
+
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            # Validates the multi-stage image assembles — npm ci, prisma generate,
+            # the Chromium install, and the dev-dep prune. No registry push.
+            - run: docker build -t cflfantasytools-api:ci .
