@@ -141,7 +141,7 @@ export const TEAMS: TeamSeed[] = [
             titleCells: [0, 1, 2],
             linkCell: 4,
             minCells: 5,
-            hrefMustMatch: '\\.pdf',
+            hrefMustMatch: '\\.pdf$',
             hrefMustInclude: ['Depth', 'Roster'],
             skipHeaderMatch: ['HAM Depth', 'OPP Depth'],
         },
@@ -174,7 +174,10 @@ export const TEAMS: TeamSeed[] = [
         legacyTeamId: 9,
         depthChartUrl: 'https://www.ottawaredblacks.com/depth-charts/',
         strategy: 'cardList',
-        config: { cardSelector: '.redblacks-primary-card', titleSelectors: ['h3', 'p'] },
-        requiresBrowser: false,
+        // Redesigned since 3DF: .redblacks-primary-card no longer exists, and
+        // the cards are rendered client-side — the raw HTML contains no PDF
+        // links at all, so this is the one club that genuinely needs a browser.
+        config: { cardSelector: '.depth-card', titleSelectors: ['h3', 'p'] },
+        requiresBrowser: true,
     },
 ]
