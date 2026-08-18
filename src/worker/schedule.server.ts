@@ -16,8 +16,15 @@ const HOUR_MS = 60 * 60 * 1000
 //
 // 3DF had a node-schedule rule that no code ever called, so depth-chart checks
 // only ever ran when an admin clicked a button. Rules land here as their
-// handlers ship, in phase 3 and beyond.
-export const SCHEDULES: ScheduleRule[] = []
+// handlers ship.
+export const SCHEDULES: ScheduleRule[] = [
+    // Hourly. Most runs cost one conditional GET per feed and write nothing,
+    // because an unchanged payload short-circuits on its sha256. The reason to
+    // run this often is that player salaries and projections are PERISHABLE —
+    // the feed exposes only the current value, so an unrecorded week's price
+    // movement is gone permanently. 3DF lost the entire 2025 season this way.
+    { kind: 'gamezone-sync', everyMs: HOUR_MS },
+]
 
 const isDue = (rule: ScheduleRule, now: Date, lastCreated: Date | null): boolean => {
     if (!lastCreated) return true

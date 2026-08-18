@@ -58,6 +58,12 @@ export function getIntegrationContext(): IntegrationContext {
 // Tables in no particular order — TRUNCATE ... CASCADE resolves FK order for us,
 // and RESTART IDENTITY keeps autoincrement ids predictable across tests.
 const TABLES = [
+    'PlayerGameweekPoints',
+    'PlayerStatSnapshot',
+    'Player',
+    'Match',
+    'Gameweek',
+    'FeedSnapshot',
     'Play',
     'Drive',
     'Game',

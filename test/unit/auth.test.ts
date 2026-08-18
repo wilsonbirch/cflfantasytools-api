@@ -69,6 +69,12 @@ describe('refresh tokens', () => {
         expect(refreshTokensMatch(token, hashRefreshToken(token))).toBe(true)
     })
 
+    it('rejects a hash of the wrong length without throwing', () => {
+        // timingSafeEqual throws on a length mismatch, so the comparison has to
+        // check length first — a truncated column must read as "no match".
+        expect(refreshTokensMatch(generateRefreshToken(), 'deadbeef')).toBe(false)
+    })
+
     it('rejects a different token', () => {
         expect(
             refreshTokensMatch(generateRefreshToken(), hashRefreshToken(generateRefreshToken())),
