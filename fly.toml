@@ -1,5 +1,9 @@
-# Fly.io deploy config — DEV.
-# Same image as the other environment, separate Fly app and database.
+# Fly.io deploy config.
+#
+# ONE environment. There is no separate dev/prod split: this is a personal
+# project with a single operator, and a second environment would double the
+# cost and the deploy ceremony for no one's benefit. Revisit if the app ever
+# has users whose data a bad deploy could damage.
 #
 # Two process groups from one image:
 #   web    — GraphQL + /health
@@ -7,9 +11,9 @@
 #
 # Secrets (DATABASE_URL, AUTH_JWT_SECRET, RESEND_API_KEY, APP_SECRET) are pushed
 # separately and never live in this file:
-#   fly secrets import --config fly.dev.toml < .fly.secrets.env
+#   fly secrets import < .fly.secrets.env
 
-app = 'cflfantasytools-api-dev'
+app = 'cflfantasytools-api'
 primary_region = 'yyz'
 kill_timeout = '300s'
 
@@ -28,16 +32,16 @@ kill_timeout = '300s'
   # one silently stopped firing for five days — unacceptable for a capture job
   # whose whole purpose is not missing a week.
   WORKER_IDLE_EXIT_MS = '0'
-  NODE_ENV = 'development'
+  NODE_ENV = 'production'
   API_PORT = '4000'
 
 [http_service]
   processes = ['web']
   internal_port = 4000
   force_https = true
-  auto_stop_machines = 'stop'
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [[http_service.checks]]
     method = 'GET'

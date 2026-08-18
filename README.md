@@ -41,21 +41,34 @@ and refuse any database whose name doesn't end in `_test`.
 no `.envrc` scoping it to anything else — so an unqualified `fly apps create`
 can put these apps in the OneReview org by mistake.
 
+One environment, deliberately — this is a personal project with a single
+operator, and a dev/prod split would double the cost and deploy ceremony for
+no one's benefit.
+
 ```bash
-fly apps create cflfantasytools-api-dev  --org personal
-fly apps create cflfantasytools-api-prod --org personal
+fly apps create cflfantasytools-api --org personal
+fly postgres create --name cflfantasytools-db --org personal
+fly postgres attach cflfantasytools-db --app cflfantasytools-api
 
-fly postgres create --name cflfantasytools-db-dev --org personal
-fly postgres attach cflfantasytools-db-dev --app cflfantasytools-api-dev
-
-fly secrets import --config fly.dev.toml < .fly.secrets.env
-fly deploy --config fly.dev.toml
+fly secrets import < .fly.secrets.env
+fly deploy
 ```
 
-Two process groups run from one image: `web` (GraphQL + `/health`) and `worker`
-(drains the `Job` table, then exits 0 so the machine stops). The worker VM is
-1GB rather than 512MB because it launches Chromium for the club sites that need
-JS — 512MB OOMs under Puppeteer.
+Migrations are applied from a workstation through a proxy, since the runtime
+image carries no Prisma CLI:
+
+```bash
+fly proxy 15432:5432 -a cflfantasytools-db &
+DATABASE_URL="postgres://...@127.0.0.1:15432/cflfantasytools_api" npx prisma migrate deploy
+```
+
+Two process groups run from one image: `web` (GraphQL + `/health`) and `worker`.
+
+The worker runs **always-on** (`WORKER_IDLE_EXIT_MS=0`) because it keeps its own
+recurring schedule in-process. A Fly machine schedule was the alternative, but
+one silently stopped firing for five days on another project here — and a
+capture job that stops silently is how the 2025 season was lost. Its VM is 1GB
+rather than 512MB because it launches Chromium for club sites that need JS.
 
 ## Layout
 
