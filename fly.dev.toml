@@ -1,0 +1,60 @@
+# Fly.io deploy config — DEV.
+# Same image as the other environment, separate Fly app and database.
+#
+# Two process groups from one image:
+#   web    — GraphQL + /health
+#   worker — drains the Job table, then idle-exits so the machine stops
+#
+# Secrets (DATABASE_URL, AUTH_JWT_SECRET, RESEND_API_KEY, APP_SECRET) are pushed
+# separately and never live in this file:
+#   fly secrets import --config fly.dev.toml < .fly.secrets.env
+
+app = 'cflfantasytools-api-dev'
+primary_region = 'yyz'
+kill_timeout = '300s'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+# Direct node (no npm/tsx wrapper): Fly's SIGTERM must reach the app's own
+# handler for a graceful drain — wrappers forward signals racily.
+[processes]
+  web = 'node --import tsx src/index.ts'
+  worker = 'node --import tsx src/worker/index.ts'
+
+[env]
+  NODE_ENV = 'development'
+  API_PORT = '4000'
+
+[http_service]
+  processes = ['web']
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = 'GET'
+    path = '/health'
+    interval = '15s'
+    timeout = '3s'
+    grace_period = '10s'
+
+# The worker exits 0 when idle (machine stops, minutes-only billing); only
+# crashes restart it.
+[[restart]]
+  policy = 'on-failure'
+  processes = ['worker']
+
+[[vm]]
+  processes = ['web']
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+
+# 1GB, not 512mb: this machine launches Chromium for the club sites that need
+# JS, and 512mb OOMs under Puppeteer.
+[[vm]]
+  processes = ['worker']
+  size = 'shared-cpu-1x'
+  memory = '1gb'

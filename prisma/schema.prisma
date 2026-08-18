@@ -1,0 +1,368 @@
+// cflfantasytools schema.
+//
+// Ported from 3DFantasy/main with four structural corrections carried over from
+// the port review: team metadata moves out of env vars into rows, notification
+// prefs stop being nine denormalized booleans, scraper config becomes data, and
+// auth gains real sessions so native can hold a token.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "nodejs"
+}
+
+// Emits the datamodel Pothos' PrismaPlugin needs — Prisma 7 no longer exposes
+// DMMF on the client, so builder.ts reads it from here.
+generator pothos {
+  provider     = "prisma-pothos-types"
+  clientOutput = "./prisma"
+  output       = "../src/generated/pothos-types.ts"
+}
+
+// Prisma 7 is driver-adapter based: no `url` here. The connection string reaches
+// the CLI via prisma.config.ts and the client via the pg adapter in db.server.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model Account {
+  id        Int      @id @default(autoincrement())
+  // Public identifier. PRESERVED VERBATIM on migration from 3DF — unsubscribe
+  // links already sitting in inboxes embed it.
+  uuid      String   @unique @default(uuid())
+  email     String   @unique
+  // bcrypt hash, carried over from 3DF unchanged so existing logins keep working.
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions      Session[]
+  subscriptions NotificationSubscription[]
+  emails        EmailDelivery[]
+
+  @@index([role])
+}
+
+// Refresh-token family. Only the SHA-256 of the token is stored; rotation
+// replaces the row, and reuse of a rotated token revokes the whole family.
+model Session {
+  id            Int       @id @default(autoincrement())
+  uuid          String    @unique @default(uuid())
+  accountId     Int
+  tokenHash     String    @unique
+  userAgent     String?
+  ip            String?
+  createdAt     DateTime  @default(now())
+  lastUsedAt    DateTime?
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  // Set when this row supersedes another; lets a reused ancestor revoke the family.
+  rotatedFromId Int?
+
+  Account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, revokedAt])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Teams
+// ---------------------------------------------------------------------------
+
+// THREE ID SPACES, all 1:1 with a club and NONE interchangeable:
+//   - `id`            our own surrogate key
+//   - `geniusTeamId`  Genius/BetGenius competitorId ("106752"), joins play-by-play
+//   - `gameZoneSquadId` CFL Game Zone squad id (1-9), joins the public JSON feeds
+// Game Zone's 1-9 and 3DF's legacy positional 1-9 are NEARLY REVERSED (Game Zone
+// 1 = OTT, 3DF 1 = SSK). Always map through `abbreviation`, never the integer.
+model Team {
+  id              Int     @id @default(autoincrement())
+  uuid            String  @unique @default(uuid())
+  slug            String  @unique
+  abbreviation    String  @unique
+  name            String
+  nameFr          String?
+  shortName       String?
+  city            String?
+  geniusTeamId    String? @unique
+  gameZoneSquadId Int?    @unique
+  isActive        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sources         TeamSource[]
+  depthChartLists DepthChartList[]
+  depthCharts     DepthChart[]
+  subscriptions   NotificationSubscription[]
+  scrapeRuns      ScrapeRun[]
+  Drives          Drive[]
+  Plays           Play[]
+}
+
+// Scraper configuration as DATA, editable from the admin surface. In 3DF this
+// lived in 27 env vars plus nine hand-written scraper modules, which is why the
+// app silently kept scraping 2025 URLs into the 2026 season.
+model TeamSource {
+  id     Int    @id @default(autoincrement())
+  teamId Int
+  kind   String @default("depth-chart")
+  url    String
+  // Which extractor to run; see src/services/depthCharts/scrape/extractors.
+  strategy String
+  // Strategy parameters (cell indexes, selectors, href filters, origin).
+  config   Json   @default("{}")
+  // Only teams whose page needs JS pay for a Chromium launch.
+  requiresBrowser Boolean @default(false)
+  enabled         Boolean @default(true)
+
+  lastOkAt    DateTime?
+  lastError   String?
+  lastItemCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, kind])
+}
+
+// Replaces Account.team1Notification..team9Notification. A tenth club is now a
+// row, not a migration plus a code change in five places.
+model NotificationSubscription {
+  id        Int      @id @default(autoincrement())
+  accountId Int
+  teamId    Int
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  Team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, teamId])
+  @@index([teamId, enabled])
+}
+
+// ---------------------------------------------------------------------------
+// Depth charts
+// ---------------------------------------------------------------------------
+
+// The last full snapshot seen for a (team, year) — the baseline the diff runs
+// against. `value` is real Json now, not a JSON string.
+model DepthChartList {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  teamId    Int
+  year      Int
+  value     Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Team        Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  depthCharts DepthChart[]
+
+  // 3DF enforced "one list per (team, year)" in application code and returned a
+  // 500 when it found two. Let the database hold the invariant instead.
+  @@unique([teamId, year])
+}
+
+model DepthChart {
+  id               Int      @id @default(autoincrement())
+  uuid             String   @unique @default(uuid())
+  teamId           Int
+  depthChartListId Int
+  title            String
+  // The external href (usually a PDF on the club's own site).
+  value            String
+  year             Int
+  season           String
+  week             Int
+  publishedAt      DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  Team           Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  DepthChartList DepthChartList @relation(fields: [depthChartListId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, year])
+}
+
+enum ScrapeStatus {
+  OK
+  FAILED
+  REJECTED
+}
+
+// One row per scrape attempt — the data behind the admin "scraper health" panel,
+// and the audit trail for the sanity gate that refuses an empty or collapsed result.
+model ScrapeRun {
+  id         Int          @id @default(autoincrement())
+  teamId     Int
+  status     ScrapeStatus
+  itemCount  Int?
+  addedCount Int?
+  error      String?
+  startedAt  DateTime     @default(now())
+  finishedAt DateTime?
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, startedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Email
+// ---------------------------------------------------------------------------
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  FAILED
+}
+
+model EmailDelivery {
+  id        Int         @id @default(autoincrement())
+  accountId Int?
+  kind      String
+  toEmail   String
+  resendId  String?     @unique
+  status    EmailStatus @default(QUEUED)
+  error     String?
+  // Groups a fan-out so a retried job can resume mid-batch instead of restarting.
+  batchKey  String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  Account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([batchKey])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Play-by-play (ported from 3DF; dormant until the EPA phase)
+// ---------------------------------------------------------------------------
+
+// `id` is the external BetGenius fixture id, not a sequence. `response` holds
+// the raw widget payload — for 2024/2025 these blobs are the ONLY surviving
+// copy, since the upstream widget now serves current-season data only.
+model Game {
+  id        Int      @id
+  uuid      String   @unique @default(uuid())
+  response  String
+  year      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Drives Drive[]
+  Plays  Play[]
+
+  @@index([year])
+}
+
+model Drive {
+  id           Int      @id @default(autoincrement())
+  uuid         String   @unique @default(uuid())
+  gameId       Int
+  geniusTeamId String
+  number       Int
+  isScoring    Boolean  @default(false)
+  points       Int?
+  // The Expected Points training label: points on the next scoring drive, signed
+  // relative to this drive's team.
+  nextPointOutcome Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  Game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  Team  Team  @relation(fields: [geniusTeamId], references: [geniusTeamId], onDelete: Cascade)
+  Plays Play[]
+
+  @@unique([gameId, number])
+}
+
+model Play {
+  id             Int      @id @default(autoincrement())
+  uuid           String   @unique @default(uuid())
+  gameId         Int
+  geniusTeamId   String
+  driveId        Int
+  number         Int
+  type           String
+  subtype        String?
+  description    String
+  clock          String
+  timestamp      BigInt
+  phase          String
+  phaseQualifier String
+  isScoring      Boolean  @default(false)
+  startPosition  String
+  endPosition    String?
+  down           Int?
+  distance       String?
+  // Signed: negative means the yard line belongs to the possessing team.
+  yardLine       Int?
+  kicker         String?
+  passer         String?
+  rusher         String?
+  receiver       String?
+  defense        String?
+  yardsGained    Int?
+  puntYards      Int?
+  returnYards    Int?
+  epa            Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  Game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  Drive Drive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  Team  Team  @relation(fields: [geniusTeamId], references: [geniusTeamId], onDelete: Cascade)
+
+  @@unique([gameId, driveId, number])
+  @@index([type, down])
+}
+
+// ---------------------------------------------------------------------------
+// Background jobs
+// ---------------------------------------------------------------------------
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+// Replaces 3DF's node-resque + Redis. The table is its own last-run record, so
+// there is no scheduler daemon and no second service to operate.
+model Job {
+  id         Int       @id @default(autoincrement())
+  kind       String
+  payload    Json      @default("{}")
+  status     JobStatus @default(PENDING)
+  attempts   Int       @default(0)
+  runAt      DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  error      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([kind, createdAt])
+}

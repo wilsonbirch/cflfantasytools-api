@@ -1,0 +1,30 @@
+{
+    "include": ["**/*.ts", "env.d.ts"],
+    "exclude": ["node_modules", "dist"],
+    "compilerOptions": {
+        /* Language and environment */
+        "target": "es2022",
+        "lib": ["es2022"],
+        "module": "esnext",
+        "moduleResolution": "bundler",
+
+        /* Paths — `~/foo` resolves to `src/foo` */
+        "paths": {
+            "~/*": ["./src/*"]
+        },
+        "types": ["node"],
+
+        /* Emit — tsc is used for type-checking only (tsx runs the app) */
+        "outDir": "./dist",
+        "noEmit": true,
+
+        /* Interop / correctness */
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "forceConsistentCasingInFileNames": true,
+
+        /* Type checking */
+        "strict": true,
+        "skipLibCheck": true
+    }
+}
