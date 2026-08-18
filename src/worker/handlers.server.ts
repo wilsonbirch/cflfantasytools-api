@@ -1,4 +1,5 @@
 import { syncGameZone } from '~/services/gamezone/syncGameZone.server'
+import { capturePbp } from '~/services/pbp/capturePbp.server'
 import { currentSeasonYear } from '~/lib/season.server'
 
 export type JobHandler = (payload: unknown) => Promise<void>
@@ -12,5 +13,9 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     'gamezone-sync': async (payload) => {
         const { year } = asRecord(payload)
         await syncGameZone(typeof year === 'number' ? year : currentSeasonYear())
+    },
+    'pbp-capture': async (payload) => {
+        const { year } = asRecord(payload)
+        await capturePbp(typeof year === 'number' ? year : currentSeasonYear())
     },
 }
