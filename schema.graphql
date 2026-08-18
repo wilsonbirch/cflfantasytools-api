@@ -17,6 +17,15 @@ The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://
 """
 scalar JSON
 
+"""Freshness of one scheduled background job."""
+type JobHealth {
+  ageMinutes: Int
+  expectedEveryMinutes: Int
+  isStale: Boolean
+  kind: String
+  lastSuccessAt: DateTime
+}
+
 enum JobStatus {
   FAILED
   PENDING
@@ -26,6 +35,9 @@ enum JobStatus {
 
 type Query {
   isUp: Boolean
+
+  """Whether each scheduled job has run recently enough."""
+  jobHealth: [JobHealth!]
 }
 
 enum Role {

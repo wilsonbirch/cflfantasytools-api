@@ -27,11 +27,12 @@ kill_timeout = '300s'
   worker = 'node --import tsx src/worker/index.ts'
 
 [env]
-  # The worker keeps its own schedule in-process and must stay up to do it.
-  # A Fly machine schedule was the alternative, and on the other projects here
-  # one silently stopped firing for five days — unacceptable for a capture job
-  # whose whole purpose is not missing a week.
-  WORKER_IDLE_EXIT_MS = '0'
+  # The always-on web process owns the schedule trigger and wakes this worker,
+  # so the worker sleeps between jobs and bills only while it works. A Fly
+  # machine schedule was the alternative, and one silently stopped firing for
+  # five days on another project here — so the trigger lives in a process we
+  # control, and jobHealth makes a stalled pipeline visible either way.
+  SCHEDULE_TICKER_ENABLED = 'true'
   NODE_ENV = 'production'
   API_PORT = '4000'
 
@@ -50,10 +51,10 @@ kill_timeout = '300s'
     timeout = '3s'
     grace_period = '10s'
 
-# The worker no longer idle-exits (WORKER_IDLE_EXIT_MS=0), so restart it if it
-# ever does stop — a stopped worker means capture has silently halted.
+# The worker exits 0 once the queue is drained, so the machine stops and bills
+# only for the minutes it worked. Only crashes restart it.
 [[restart]]
-  policy = 'always'
+  policy = 'on-failure'
   processes = ['worker']
 
 [[vm]]
