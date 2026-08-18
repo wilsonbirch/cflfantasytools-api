@@ -1,5 +1,5 @@
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient } from '../src/generated/prisma/client'
+import { PrismaClient, type Prisma } from '../src/generated/prisma/client'
 import { TEAMS } from '../src/data/teams'
 
 // Idempotent: upserts by the natural key (slug for teams, teamId+kind for
@@ -44,7 +44,9 @@ async function main(): Promise<void> {
                 kind: 'depth-chart',
                 url: t.depthChartUrl,
                 strategy: t.strategy,
-                config: t.config,
+                // TeamSeed.config is a plain object so src/data/teams.ts stays free of
+                // Prisma imports; it is JSON by construction.
+                config: t.config as Prisma.InputJsonValue,
                 requiresBrowser: t.requiresBrowser,
             },
         })
