@@ -54,6 +54,34 @@ fly secrets import < .fly.secrets.env
 fly deploy
 ```
 
+### Deploys are automatic
+
+`.github/workflows/deploy.yml` runs on every push to `main`: it applies pending
+migrations through a proxy, runs `fly deploy`, then polls `/health` until the
+new release answers. `workflow_dispatch` re-runs it by hand.
+
+It carries no test jobs. `main` requires the five CI contexts and has `strict`
+on, so a commit only lands after that exact tree went green on its PR.
+Re-testing here would be byte-identical duplication. **Remove those required checks and
+this workflow becomes unguarded**, and the suite has to move back into it.
+
+Two repo secrets feed it:
+
+| Secret          | What                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `FLY_API_TOKEN` | Two app-scoped deploy tokens, comma-joined — one for the API, one for the database. Deliberately not an org token. |
+| `DATABASE_URL`  | The `.flycast` URL with its host swapped for `127.0.0.1:15432`.                                                    |
+
+⚠️ **Keep migrations additive.** Between the migrate step and the machines
+finishing their roll, the OLD code is live against the NEW schema. A migration
+that drops or renames a column the running release still reads will break
+production for the length of the deploy. Additive now, destructive in a later
+release once nothing reads the old shape.
+
+Rolling back is `fly releases` to find the version, then
+`fly deploy --image <previous image>` — note that a rollback does NOT undo a
+migration, which is the other reason to keep them additive.
+
 ### Applying a migration
 
 Migrations run from a workstation through a proxy, since the runtime image
