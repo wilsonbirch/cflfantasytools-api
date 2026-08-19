@@ -86,6 +86,74 @@ describe('pointsForPlay', () => {
     })
 })
 
+describe('pointsForPlay — return touchdowns the feed does not mark', () => {
+    // 45 of these in the 2023/24 corpus, every one worth nothing before this.
+    // The feed leaves subType null (or "Failed" on a missed field goal), so the
+    // only evidence a touchdown happened is the description.
+    const punt =
+        '#29 J.Haggerty punt 59 yards to the HAM26 recovered by HAM #81 L.Gallimore at HAM26 ' +
+        '#81 L.Gallimore return 84 yards to the TOR00 TOUCHDOWN, clock 12:21'
+    const kickoff =
+        '#39 R.Boyd kickoff 65 yards to the MTL05 #89 J.Letcher Jr. return 105 yards to the ' +
+        'TOR00 TOUCHDOWN, clock 09:41'
+    const missedFg =
+        '#11 A.Hale field goal attempt from 47 yards NO GOOD #29 J.Edwards-Cooper return 63 ' +
+        'yards to the MTL00 TOUCHDOWN, clock 03:26'
+    const stripSack =
+        'Shotgun #8 Z.Collaros sacked for loss of 12 yards to the HAM48, fumble by #8 Z.Collaros ' +
+        'recovered by HAM #24 C.Edwards at HAM48 #24 C.Edwards return 62 yards to the WPG00 ' +
+        'TOUCHDOWN, clock 09:53'
+
+    it('scores them MINUS six, because the other side scored them', () => {
+        // Negative is the whole point: these are always returned by the team
+        // WITHOUT the ball, and points are signed for the play's own team.
+        expect(pointsForPlay('Punt', null, punt)).toBe(-6)
+        expect(pointsForPlay('Kickoff', null, kickoff)).toBe(-6)
+        expect(pointsForPlay('FieldGoal', 'Failed', missedFg)).toBe(-6)
+        expect(pointsForPlay('Sack', null, stripSack)).toBe(-6)
+    })
+
+    it('requires the ball to REACH a goal line, not just the word touchdown', () => {
+        // A called-back touchdown still says TOUCHDOWN. Matching the bare word
+        // would invent points that never counted.
+        expect(pointsForPlay('Punt', null, '#10 J.Julien punt 40 yards, TOUCHDOWN nullified')).toBe(
+            null,
+        )
+    })
+
+    it('leaves penalty plays alone rather than guessing', () => {
+        // 53 plays in the corpus carry subType "Penalty" and the word TOUCHDOWN,
+        // and the description does not reliably say whether it stood. Missing a
+        // score is recoverable; inventing one poisons the label.
+        expect(
+            pointsForPlay(
+                'Pass',
+                'Penalty',
+                '#3 T.Thrower pass complete deep left to #8 R.Receiver return 40 yards to the ' +
+                    'CGY00 TOUCHDOWN PENALTY HAM Hold',
+            ),
+        ).toBeNull()
+    })
+
+    it('does not disturb an interception returned for a touchdown', () => {
+        // The feed DOES mark these, and stamps them with the scoring team's own
+        // id — so they are a plain +6 on that team's row, not a negative.
+        expect(
+            pointsForPlay(
+                'Pass',
+                'Touchdown',
+                '#18 M.Shiltz pass intercepted by #37 W.Sutton at MTL39 #37 W.Sutton return 71 ' +
+                    'yards to the HAM00 TOUCHDOWN',
+            ),
+        ).toBe(6)
+    })
+
+    it('still reads points with no description at all', () => {
+        // The parameter is optional, so every existing caller keeps working.
+        expect(pointsForPlay('FieldGoal', 'Success')).toBe(3)
+    })
+})
+
 describe('parseDescription — completions', () => {
     const desc =
         'Shotgun #10 B.Schager pass complete short left to #75 P.Boersch caught at CGY38, ' +

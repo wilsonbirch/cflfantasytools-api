@@ -92,16 +92,33 @@ export type DriveOutcome = {
 }
 
 /**
- * Points a drive scored, as the plain sum of what its own plays scored.
+ * Points a drive scored, SIGNED from the possessing team's point of view.
  *
- * This only sums correctly because a play is worth its own points and nothing
- * else — a touchdown 6, its convert 1 or 2, separately. See pointsForPlay.
+ * Positive means this drive's team scored them; negative means the opponent did,
+ * on this drive. That second case is not exotic and it is not rare enough to
+ * ignore — in the 2023/24 corpus 121 scoring plays belong to a team other than
+ * the drive they sit in.
+ *
+ * SUMMING THE PLAYS UNSIGNED IS A SIGN ERROR, NOT A ROUNDING ERROR. A drive
+ * ending in a pick-six previously came out at +7 for the team that THREW the
+ * interception, because the feed correctly stamps the returning team's id on the
+ * touchdown and the convert, and both were added as if they were the offence's.
+ * Fed into `nextPointOutcome`, that is a 14-point error in the expected-points
+ * training label, on exactly the plays a model most needs to get right.
+ *
+ * The sum still works because a play is worth its own points and nothing else —
+ * a touchdown 6, its convert 1 or 2, separately (see pointsForPlay) — and
+ * because a return touchdown is already negative for the team it belongs to.
  */
 export function driveOutcome(drive: GroupedDrive): DriveOutcome {
     let total: number | null = null
     for (const play of drive.plays) {
         const { points } = parseDescription(play.description, play.type, play.subType)
-        if (points !== null) total = (total ?? 0) + points
+        if (points === null) continue
+        // Whose play it is decides the sign. The feed stamps a defensive
+        // touchdown and the convert that follows with the SCORING team's id.
+        const signed = play.teamId === drive.geniusTeamId ? points : -points
+        total = (total ?? 0) + signed
     }
     return { points: total, isScoring: total !== null && total !== 0 }
 }
