@@ -452,6 +452,40 @@ model Play {
   @@index([rusher])
 }
 
+// One cell of the fitted expected-points surface: the average points the next
+// score is worth, from this game state, to the team holding the ball.
+//
+// The model is EMPIRICAL, not learned — a mean over binned real drives. That is
+// deliberate for v1: it is inspectable, every cell carries the sample it was
+// built from, and its weaknesses can be measured before anything heavier is
+// justified.
+//
+// SCOPED TO A RULE ERA, AND NEVER POOLED ACROSS ONE. See
+// docs/memory/project-cfl-rule-eras.md. 2026 changed the label distribution by
+// narrowing the rouge; 2027 changes the yard-line DOMAIN itself, shortening the
+// field 110 -> 100 and moving the goalposts back, and no rescaling recovers it
+// because field-position value is not linear.
+model EpValue {
+  id      Int     @id @default(autoincrement())
+  ruleEra RuleEra
+  down    Int
+  // "1-3", "4-6", "7-10", "11+" — yards to go, bucketed because the raw value
+  // is far too sparse to average at ~14k plays a season.
+  distanceBucket String
+  // Field position in 10-yard bands, 0-10, measured from the possessing team's
+  // OWN goal line. Era-dependent in width: the field is 110 yards until 2027.
+  yardLineBucket Int
+  expectedPoints Float
+  // Plays this cell was averaged over. Kept because it is the honest measure of
+  // how much to trust the cell, and because lookups pool sparse cells into
+  // coarser ones rather than returning a mean of nine plays.
+  sampleSize Int
+  fittedAt   DateTime @default(now())
+
+  @@unique([ruleEra, down, distanceBucket, yardLineBucket])
+  @@index([ruleEra])
+}
+
 // ---------------------------------------------------------------------------
 // Background jobs
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { syncGameZone } from '~/services/gamezone/syncGameZone.server'
 import { capturePbp } from '~/services/pbp/capturePbp.server'
 import { parseStoredGames } from '~/services/pbp/parsePlays.server'
+import { refitAndApply } from '~/services/epa/fitEp.server'
 import { checkTeam, sweepAllTeams } from '~/services/depthCharts/checkTeam.server'
 import { currentSeasonYear } from '~/lib/season.server'
 
@@ -28,6 +29,13 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     'pbp-parse': async (payload) => {
         const { year, force } = asRecord(payload)
         await parseStoredGames(typeof year === 'number' ? year : undefined, force === true)
+    },
+    // Refits the expected-points surface and reprices every play from it.
+    // Separate from pbp-parse for the same reason parse is separate from
+    // capture: a model change must not be able to break normalization, and both
+    // halves rebuild from stored rows so this is re-runnable at any time.
+    'epa-fit': async () => {
+        await refitAndApply()
     },
     // Fans out one job per club rather than scraping nine sites in one job, so
     // a single club's site being down cannot block or fail the other eight.

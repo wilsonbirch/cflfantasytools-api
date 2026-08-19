@@ -34,6 +34,12 @@ export const SCHEDULES: ScheduleRule[] = [
     // nothing new, because a game already parsed since its last capture is
     // skipped outright.
     { kind: 'pbp-parse', everyMs: 7 * HOUR_MS },
+    // Daily, and offset again from the parse that feeds it. Refitting more often
+    // than that buys nothing: the surface is a mean over tens of thousands of
+    // drives, and one game moves it by less than the noise in any cell. Running
+    // it at all on a schedule is what keeps stored EPA consistent with the
+    // stored surface as new games land.
+    { kind: 'epa-fit', everyMs: 25 * HOUR_MS },
     // Clubs post charts on their own schedule through the week, so a 30-minute
     // sweep is the difference between a same-day alert and a next-day one.
     // Only the sweep is scheduled; it enqueues the per-club jobs itself.
