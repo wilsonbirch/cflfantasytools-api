@@ -163,6 +163,118 @@ describe('driveOutcome', () => {
         ])
         expect(driveOutcome(drive).points).toBe(1)
     })
+
+    it('scores a pick-six AGAINST the team that threw it', () => {
+        // The real shape of drive 660 in the 2023/24 corpus: Hamilton has the
+        // ball, Shiltz is intercepted, Montreal returns it 71 yards and converts.
+        // The feed stamps both scoring plays with MONTREAL's id.
+        //
+        // Summing unsigned gave Hamilton +7 for throwing a pick-six — a 14-point
+        // sign error in the expected-points label, and the single worst thing
+        // that can be in a training set.
+        const [drive] = groupIntoDrives([
+            play({ id: '1-1', teamId: HOME }),
+            play({
+                id: '1-2',
+                teamId: AWAY,
+                type: 'Pass',
+                subType: 'Touchdown',
+                description:
+                    'Shotgun #18 M.Shiltz pass intercepted by #37 W.Sutton at MTL39 ' +
+                    '#37 W.Sutton return 71 yards to the HAM00 TOUCHDOWN',
+                isScoring: true,
+            }),
+            play({
+                id: '1-3',
+                teamId: AWAY,
+                type: 'OnePoint',
+                subType: 'Success',
+                description: '#15 D.Cote kick attempt good (H: #36 J.Zema, LS: #50 L.Bourassa)',
+                isScoring: true,
+            }),
+        ])
+
+        expect(driveOutcome(drive)).toEqual({ points: -7, isScoring: true })
+    })
+
+    it('scores a punt return touchdown against the punting team', () => {
+        // Drive 121 in the corpus. The return touchdown carries NO subtype, so it
+        // was worth nothing at all, while the convert that followed it was
+        // credited +1 to the team that had just been scored on.
+        const [drive] = groupIntoDrives([
+            play({ id: '1-1', teamId: HOME }),
+            play({
+                id: '1-2',
+                teamId: HOME,
+                type: 'Punt',
+                subType: null,
+                description:
+                    '#29 J.Haggerty punt 59 yards to the HAM26 recovered by HAM #81 L.Gallimore ' +
+                    'at HAM26 #81 L.Gallimore return 84 yards to the TOR00 TOUCHDOWN, clock 12:21',
+            }),
+            play({
+                id: '1-3',
+                teamId: AWAY,
+                type: 'OnePoint',
+                subType: 'Success',
+                description: '#3 E.Ratke kick attempt good (H: #79 B.Flint, LS: #58 G.Whyte)',
+                isScoring: true,
+            }),
+        ])
+
+        expect(driveOutcome(drive)).toEqual({ points: -7, isScoring: true })
+    })
+
+    it('still counts a defensive score as a scoring drive', () => {
+        // isScoring keys off "points were scored on this drive", not off the sign.
+        // Getting this wrong would make nextPointOutcome skip straight past a
+        // pick-six to the following drive.
+        const [drive] = groupIntoDrives([
+            play({ id: '1-1', teamId: HOME }),
+            play({
+                id: '1-2',
+                teamId: AWAY,
+                type: 'Pass',
+                subType: 'Touchdown',
+                description: '#5 A.Passer pass intercepted by #9 B.Back return 40 yards TOUCHDOWN',
+                isScoring: true,
+            }),
+        ])
+
+        expect(driveOutcome(drive)).toEqual({ points: -6, isScoring: true })
+    })
+})
+
+describe('nextPointOutcomes with a defensive score', () => {
+    const pickSix = (id: string, offence: string, defence: string) => [
+        play({ id: `${id}-1`, teamId: offence }),
+        play({
+            id: `${id}-2`,
+            teamId: defence,
+            type: 'Pass',
+            subType: 'Touchdown',
+            description: '#5 A.Passer pass intercepted by #9 B.Back return 40 yards TOUCHDOWN',
+            isScoring: true,
+        }),
+    ]
+
+    it('labels the drive that threw the interception negative', () => {
+        const drives = groupIntoDrives(pickSix('1', HOME, AWAY))
+
+        // The team with the ball loses 6 on its own drive.
+        expect(nextPointOutcomes(drives)).toEqual([-6])
+    })
+
+    it('labels an earlier opposing drive positive', () => {
+        const drives = groupIntoDrives([
+            play({ id: '1-1', teamId: AWAY }),
+            ...pickSix('2', HOME, AWAY),
+        ])
+
+        // AWAY punts, then HOME throws a pick-six to AWAY: from AWAY's first
+        // drive the next score is +6 to AWAY, and from HOME's drive it is -6.
+        expect(nextPointOutcomes(drives)).toEqual([6, -6])
+    })
 })
 
 describe('nextPointOutcomes', () => {
