@@ -49,6 +49,24 @@ updates:
                   - 'major'
                   - 'minor'
                   - 'patch'
+          # The lint toolchain is coupled the same way, and less obviously:
+          # typescript-eslint's peer range decides which eslint major can
+          # install at all. eslint 10 and globals 17 arrived as two separate
+          # PRs and only worked because typescript-eslint had already drifted
+          # to 8.67.0, which clears eslint 10's >= 8.56.0 floor. That was luck,
+          # not design — and the same eslint 10 bump is a hard failure in
+          # cflfantasytools-native, where eslint-plugin-react caps at ^9.7.
+          eslint:
+              patterns:
+                  - 'eslint'
+                  - 'typescript-eslint'
+                  - '@typescript-eslint/*'
+                  - 'globals'
+                  - 'jiti'
+              update-types:
+                  - 'major'
+                  - 'minor'
+                  - 'patch'
           # Everything else non-major in one PR to cut noise. Majors still
           # arrive individually so they get read.
           minor-and-patch:
@@ -107,7 +125,21 @@ updates:
           interval: 'weekly'
       open-pull-requests-limit: 5
       groups:
-          actions-minor-and-patch:
+          # One group across every update-type, majors included. The actions
+          # all live in the same step lists, often on adjacent lines, so two
+          # solo major PRs conflict textually — whichever merges second then
+          # needs `@dependabot recreate`, because a plain rebase cannot resolve
+          # it. The npm argument for solo majors (a risky bump deserves its own
+          # review) does not transfer: these are first-party GitHub actions
+          # whose diffs are one `uses:` line each.
+          actions:
+              patterns:
+                  - '*'
               update-types:
+                  - 'major'
                   - 'minor'
                   - 'patch'
+          security:
+              applies-to: security-updates
+              patterns:
+                  - '*'
