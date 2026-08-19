@@ -17,7 +17,7 @@ jobs:
     lint:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - uses: actions/setup-node@v7
               with:
                   node-version: 22
@@ -29,7 +29,7 @@ jobs:
     typecheck:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - uses: actions/setup-node@v7
               with:
                   node-version: 22
@@ -45,7 +45,7 @@ jobs:
     test:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - uses: actions/setup-node@v7
               with:
                   node-version: 22
@@ -75,7 +75,7 @@ jobs:
             API_PORT: '4100'
             AUTH_JWT_SECRET: ci-auth-secret
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - uses: actions/setup-node@v7
               with:
                   node-version: 22
@@ -91,7 +91,7 @@ jobs:
     build:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             # Validates the multi-stage image assembles — npm ci, prisma generate,
             # the Chromium install, and the dev-dep prune. No registry push.
             - run: docker build -t cflfantasytools-api:ci .

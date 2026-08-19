@@ -27,7 +27,7 @@ jobs:
     deploy:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             # Pinned to a SHA, not @master. This job holds a token that can
             # deploy production, the repo is public, and a mutable ref means a
             # compromise of that action runs attacker code with the token.
