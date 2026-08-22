@@ -199,7 +199,23 @@ function parseYards(description: string): number | null {
 }
 
 /**
- * Points scored ON THIS PLAY, from the play's own type and subtype.
+ * A touchdown scored on a RETURN, which the feed does not mark as one.
+ *
+ * `subType` carries "Touchdown" for an ordinary scoring play, but a punt or
+ * kickoff run back, a missed field goal returned, or a strip-sack recovered and
+ * run in arrives with `subType` null or "Failed". 45 of them in the 2023/24
+ * corpus were therefore worth nothing at all — six points missing from the
+ * expected-points label each time.
+ *
+ * The pattern is the ball REACHING A GOAL LINE ("return 84 yards to the TOR00
+ * TOUCHDOWN"), not the mere presence of the word. That distinction matters:
+ * descriptions also say TOUCHDOWN when one was called back, and matching the
+ * word alone would invent scores that never counted.
+ */
+const RETURN_TOUCHDOWN = /to the [A-Z]{2,3}00 TOUCHDOWN/
+
+/**
+ * Points scored ON THIS PLAY, signed positive for the play's own team.
  *
  * 3DF's table was wrong in a way that silently corrupted every drive total: it
  * scored `OnePoint/Success` as 7 and `TwoPoints/Success` as 8, treating the
@@ -209,14 +225,33 @@ function parseYards(description: string): number | null {
  * Here each play is worth only what it scored itself, so a drive total is a
  * plain sum. `Single` is the rouge — the play class the 2026 rule change cut
  * down, and the reason a model must never pool eras.
+ *
+ * A RETURN TOUCHDOWN IS NEGATIVE SIX, not six. Every one of them is scored by
+ * the side that did not have the ball — a punt or kickoff coverage breakdown, a
+ * missed field goal run back, a strip-sack picked up by the defence — and this
+ * function returns points from the perspective of the team whose play it is.
+ * An interception returned for a touchdown is NOT one of these: the feed gives
+ * that play the scoring team's own id and marks it `Touchdown`, so it is
+ * already positive for the team it belongs to and gets signed by the caller.
  */
-export function pointsForPlay(type: string, subType: string | null): number | null {
+export function pointsForPlay(
+    type: string,
+    subType: string | null,
+    description = '',
+): number | null {
     if (subType === 'Touchdown') return 6
     if (subType === 'Single') return 1
-    if (subType !== 'Success') return null
-    if (type === 'FieldGoal') return 3
-    if (type === 'OnePoint') return 1
-    if (type === 'TwoPoints') return 2
+    if (subType === 'Success') {
+        if (type === 'FieldGoal') return 3
+        if (type === 'OnePoint') return 1
+        if (type === 'TwoPoints') return 2
+        return null
+    }
+    // `Penalty` is deliberately excluded rather than inferred. On those plays a
+    // touchdown may have stood with an offsetting flag or been wiped by it, and
+    // the description does not reliably say which — 53 such plays in the corpus.
+    // Missing a score is recoverable; inventing one poisons the training label.
+    if (subType !== 'Penalty' && RETURN_TOUCHDOWN.test(description)) return -6
     return null
 }
 
@@ -338,7 +373,7 @@ export function parseDescription(
         penaltyTeam: penalty.team,
         penaltyName: penalty.name,
         penaltyYards: penalty.yards,
-        points: pointsForPlay(type, subType),
+        points: pointsForPlay(type, subType, description),
     }
 }
 

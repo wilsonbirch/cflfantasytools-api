@@ -325,6 +325,11 @@ model Drive {
   geniusTeamId     String
   number           Int
   isScoring        Boolean  @default(false)
+  // Points on this drive, SIGNED from the possessing team's point of view.
+  // Negative means the OPPONENT scored on this drive — a pick-six, a punt or
+  // kickoff returned, a missed field goal run back. 121 scoring plays in the
+  // 2023/24 corpus belong to a team other than the drive they sit in, so this
+  // is a real case and not a theoretical one.
   points           Int?
   // The Expected Points training label: points on the next scoring drive, signed
   // relative to this drive's team. Null means the drive reached the end of a
@@ -422,6 +427,13 @@ model Play {
   // Points scored ON THIS PLAY, signed positive for the play's own team. A
   // touchdown is 6 and its convert is a SEPARATE play worth 1 or 2 — summing
   // these over a drive gives the drive total exactly once.
+  //
+  // NEGATIVE SIX means a return touchdown: a punt or kickoff run back, a missed
+  // field goal returned, a strip-sack picked up and carried in. The feed leaves
+  // those with a null subtype, so they are read from the description, and they
+  // are always scored by the side that did NOT have the ball. An interception
+  // returned for a touchdown is different — the feed stamps that play with the
+  // scoring team's own id, so it is a plain +6 on their row.
   points Int?
 
   createdAt DateTime @default(now())
