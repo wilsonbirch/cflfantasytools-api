@@ -3,6 +3,41 @@ A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `dat
 """
 scalar DateTime
 
+"""One posted depth chart; `url` is the club's own PDF."""
+type DepthChart {
+  """When the scraper first saw the chart."""
+  detectedAt: DateTime!
+  id: Int!
+  publishedAt: DateTime!
+  season: String!
+  title: String!
+  url: String!
+  uuid: String!
+  week: Int!
+  year: Int!
+}
+
+"""A team's depth charts for one season, newest chart first."""
+type DepthChartList {
+  charts: [DepthChart!]!
+  id: Int!
+  team: Team!
+  updatedAt: DateTime!
+  uuid: String!
+  year: Int!
+}
+
+type Drive {
+  id: Int!
+  isScoring: Boolean!
+  number: Int!
+
+  """Signed for the possessing team: negative means the opponent scored."""
+  points: Int
+  startQuarter: Int
+  team: Team!
+}
+
 enum EmailStatus {
   BOUNCED
   COMPLAINED
@@ -10,6 +45,24 @@ enum EmailStatus {
   FAILED
   QUEUED
   SENT
+}
+
+"""One fixture. Scores and stats are derived from plays at read time."""
+type Game {
+  awayScore: Int
+  awayTeam: Team
+  boxScore: [TeamBoxScore!]!
+  date: DateTime
+  drives: [Drive!]!
+  homeScore: Int
+  homeTeam: Team
+  id: Int!
+  playerStats: [PlayerGameStats!]!
+
+  """Chronological, including no-plays."""
+  plays: [Play!]!
+  ruleEra: RuleEra
+  year: Int!
 }
 
 """
@@ -20,9 +73,9 @@ scalar JSON
 """Freshness of one scheduled background job."""
 type JobHealth {
   ageMinutes: Int
-  expectedEveryMinutes: Int
-  isStale: Boolean
-  kind: String
+  expectedEveryMinutes: Int!
+  isStale: Boolean!
+  kind: String!
   lastSuccessAt: DateTime
 }
 
@@ -33,11 +86,119 @@ enum JobStatus {
   SUCCEEDED
 }
 
+enum PassDepth {
+  DEEP
+  SHORT
+}
+
+enum PassDirection {
+  LEFT
+  MIDDLE
+  RIGHT
+}
+
+type Play {
+  airYards: Int
+  clock: String!
+  description: String!
+  distance: String
+  down: Int
+  driveNumber: Int!
+  epa: Float
+  id: Int!
+
+  """Whether a pass was caught; null on non-pass plays."""
+  isComplete: Boolean
+  isFirstDown: Boolean!
+
+  """A penalty wiped this snap; excluded from all stats."""
+  isNoPlay: Boolean!
+  isScoring: Boolean!
+  isTurnover: Boolean!
+  number: Int!
+  passer: String
+  phase: String!
+
+  """Points on this play, signed for its team; -6 is a return touchdown."""
+  points: Int
+
+  """1-4; null in overtime or when the feed gives no quarter."""
+  quarter: Int
+  receiver: String
+  rusher: String
+  subtype: String
+  targetDepth: PassDepth
+  targetDirection: PassDirection
+  team: Team!
+  type: String!
+  yardLine: Int
+  yardsAfterCatch: Int
+  yardsGained: Int
+}
+
+"""Per-player production in one game, from plays (no-plays excluded)."""
+type PlayerGameStats {
+  completions: Int!
+  epa: Float!
+  gameId: Int!
+  interceptions: Int!
+  passAttempts: Int!
+  passingTouchdowns: Int!
+  passingYards: Int!
+
+  """Name as it appears in the play text, e.g. "#12 A.Smith"."""
+  player: String!
+  receivingTouchdowns: Int!
+  receivingYards: Int!
+  receptions: Int!
+  rushAttempts: Int!
+  rushingTouchdowns: Int!
+  rushingYards: Int!
+  targets: Int!
+  targetsByZone: [ZoneTargets!]!
+  team: Team!
+}
+
+"""Per-player production over a season, from plays (no-plays excluded)."""
+type PlayerSeasonStats {
+  completions: Int!
+  epa: Float!
+  games: Int!
+  interceptions: Int!
+  passAttempts: Int!
+  passingTouchdowns: Int!
+  passingYards: Int!
+
+  """Name as it appears in the play text, e.g. "#12 A.Smith"."""
+  player: String!
+  receivingTouchdowns: Int!
+  receivingYards: Int!
+  receptions: Int!
+  rushAttempts: Int!
+  rushingTouchdowns: Int!
+  rushingYards: Int!
+  targets: Int!
+  targetsByZone: [ZoneTargets!]!
+  team: Team!
+  year: Int!
+}
+
 type Query {
-  isUp: Boolean
+  depthChartLists(teamSlug: String!, year: Int): [DepthChartList!]!
+  depthChartYears(teamSlug: String!): [Int!]!
+  game(id: Int!): Game
+
+  """Newest first. Only games with parsed plays."""
+  games(limit: Int = 50, offset: Int = 0, teamSlug: String, year: Int!): [Game!]!
+  isUp: Boolean!
 
   """Whether each scheduled job has run recently enough."""
-  jobHealth: [JobHealth!]
+  jobHealth: [JobHealth!]!
+
+  """Sorted by targets + pass attempts + rush attempts, descending."""
+  playerSeasonStats(limit: Int = 100, offset: Int = 0, teamSlug: String, year: Int!): [PlayerSeasonStats!]!
+  team(slug: String!): Team
+  teams: [Team!]!
 }
 
 enum Role {
@@ -45,8 +206,52 @@ enum Role {
   USER
 }
 
+enum RuleEra {
+  E2026
+  E2027
+  PRE_2026
+}
+
 enum ScrapeStatus {
   FAILED
   OK
   REJECTED
+}
+
+type Team {
+  abbreviation: String!
+  city: String
+  id: Int!
+  isActive: Boolean!
+  name: String!
+  nameFr: String
+  shortName: String
+  slug: String!
+  uuid: String!
+}
+
+"""One team's totals in a game, from plays (no-plays excluded)."""
+type TeamBoxScore {
+  completions: Int!
+  epa: Float!
+  firstDowns: Int!
+  passAttempts: Int!
+  passingYards: Int!
+  plays: Int!
+  points: Int!
+  rushAttempts: Int!
+  rushingYards: Int!
+  team: Team!
+  totalYards: Int!
+  turnovers: Int!
+}
+
+"""Targets to one (depth, direction) zone."""
+type ZoneTargets {
+  depth: PassDepth!
+  direction: PassDirection!
+  epa: Float!
+  receptions: Int!
+  targets: Int!
+  yards: Int!
 }

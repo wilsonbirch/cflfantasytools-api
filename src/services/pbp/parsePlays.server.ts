@@ -25,6 +25,12 @@ const fileName = 'services/pbp/parsePlays'
  */
 export const fieldLengthForEra = (era: RuleEra): number => (era === 'E2027' ? 100 : 110)
 
+type MatchInfo = {
+    scheduledStartTime?: string
+    homeTeam?: { competitorId?: string }
+    awayTeam?: { competitorId?: string }
+}
+
 export type ParseSummary = {
     gameId: number
     drives: number
@@ -50,11 +56,13 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
     if (!game) return null
 
     let raw: RawPlay[]
+    let matchInfo: MatchInfo | undefined
     try {
         const payload = JSON.parse(game.response) as {
-            data?: { playByPlayInfo?: { ALL?: RawPlay[] } }
+            data?: { matchInfo?: MatchInfo; playByPlayInfo?: { ALL?: RawPlay[] } }
         }
         raw = payload.data?.playByPlayInfo?.ALL ?? []
+        matchInfo = payload.data?.matchInfo
     } catch {
         throw new Error(`game ${gameId}: response is not valid JSON`)
     }
@@ -138,9 +146,23 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
             written += drive.plays.length
         }
 
+        // Fixture metadata, so the read surface never opens the blob. Only a
+        // club we know can be linked: the columns are foreign keys onto Team.
+        const knownOrNull = (id: string | undefined): string | null =>
+            id && abbrByGeniusId.has(id) ? id : null
+        const startedAt = matchInfo?.scheduledStartTime
+            ? new Date(matchInfo.scheduledStartTime)
+            : null
         await tx.game.update({
             where: { id: gameId },
-            data: { parsedAt: new Date(), playCount: written, ruleEra: era },
+            data: {
+                parsedAt: new Date(),
+                playCount: written,
+                ruleEra: era,
+                homeGeniusTeamId: knownOrNull(matchInfo?.homeTeam?.competitorId),
+                awayGeniusTeamId: knownOrNull(matchInfo?.awayTeam?.competitorId),
+                startedAt: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt : null,
+            },
         })
         // md5 computed by Postgres, not Node: the candidate query below compares
         // against md5("response") server-side, and a hash produced by two

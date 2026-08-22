@@ -14,8 +14,12 @@ export const builder = new SchemaBuilder<{
         JSON: { Input: unknown; Output: unknown }
     }
     PrismaTypes: PrismaTypes
+    DefaultFieldNullability: false
 }>({
     plugins: [ErrorsPlugin, PrismaPlugin],
+    // Non-null unless a field says otherwise: the SDL is the cross-repo contract,
+    // and "nullable only where the data really can be null" is part of it.
+    defaultFieldNullability: false,
     prisma: {
         // The Proxy from db.server, so __setTestPrisma swaps are visible at query time.
         client: db,
