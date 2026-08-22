@@ -11,7 +11,7 @@ import {
 
 // Prisma enums exposed to GraphQL. Registered centrally so a domain module never
 // races another to define the same enum.
-builder.enumType(Role, { name: 'Role' })
+export const RoleEnum = builder.enumType(Role, { name: 'Role' })
 builder.enumType(ScrapeStatus, { name: 'ScrapeStatus' })
 builder.enumType(EmailStatus, { name: 'EmailStatus' })
 export const JobStatusEnum = builder.enumType(JobStatus, { name: 'JobStatus' })

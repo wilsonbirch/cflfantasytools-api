@@ -48,6 +48,5 @@ builder.queryType({
     }),
 })
 
-// No mutationType yet: an object type with zero fields is invalid GraphQL and
-// breaks client codegen. Phase 2 declares it alongside the first auth mutation,
-// after which domain modules attach fields via builder.mutationFields(...).
+// mutationType is declared in schemas/auth.server.ts alongside the first
+// mutations; other modules attach to it via builder.mutationFields(...).
