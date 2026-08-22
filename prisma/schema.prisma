@@ -111,6 +111,8 @@ model Team {
   players         Player[]
   homeMatches     Match[]                    @relation("HomeMatches")
   awayMatches     Match[]                    @relation("AwayMatches")
+  homeGames       Game[]                     @relation("GameHome")
+  awayGames       Game[]                     @relation("GameAway")
 }
 
 // Scraper configuration as DATA, editable from the admin surface. In 3DF this
@@ -292,29 +294,38 @@ enum PassDirection {
 // The blob is retained after parsing on purpose: it makes the parser re-runnable,
 // so a parser bug is a re-parse rather than a data loss.
 model Game {
-  id        Int       @id
-  uuid      String    @unique @default(uuid())
-  response  String
-  year      Int
-  ruleEra   RuleEra?
+  id               Int       @id
+  uuid             String    @unique @default(uuid())
+  response         String
+  year             Int
+  ruleEra          RuleEra?
   // Set when the parser last wrote Drive/Play rows for this game. Informational
   // only — `parsedHash` decides whether a re-parse is needed.
-  parsedAt  DateTime?
+  parsedAt         DateTime?
   // md5 of the `response` this game was last parsed from. Null means never
   // parsed; a value differing from md5(response) means the payload changed and
   // the game needs re-parsing. Deliberately NOT a timestamp comparison: writing
   // parsedAt bumps @updatedAt on the same row, so updatedAt > parsedAt was
   // always true and every game re-parsed on every run.
-  parsedHash String?
+  parsedHash       String?
   // Number of plays written by the last successful parse.
-  playCount Int?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  playCount        Int?
+  // Fixture metadata lifted from the payload's matchInfo at parse time, so the
+  // read surface never has to open the blob. Null until the game is (re)parsed.
+  homeGeniusTeamId String?
+  awayGeniusTeamId String?
+  startedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  Drives Drive[]
-  Plays  Play[]
+  Drives   Drive[]
+  Plays    Play[]
+  HomeTeam Team?   @relation("GameHome", fields: [homeGeniusTeamId], references: [geniusTeamId], onDelete: SetNull)
+  AwayTeam Team?   @relation("GameAway", fields: [awayGeniusTeamId], references: [geniusTeamId], onDelete: SetNull)
 
   @@index([year])
+  @@index([homeGeniusTeamId])
+  @@index([awayGeniusTeamId])
   @@index([parsedAt])
 }
 
@@ -414,11 +425,11 @@ model Play {
   // completions, every touchdown catch among them — the difference between
   // correct reconstructed fantasy points and quietly wrong ones.
   isComplete  Boolean?
-  isFirstDown Boolean @default(false)
-  isTurnover  Boolean @default(false)
+  isFirstDown Boolean  @default(false)
+  isTurnover  Boolean  @default(false)
   // A penalty wiped this snap ("NO PLAY"). It occupies no down and must be
   // excluded from any expected-points fit.
-  isNoPlay    Boolean @default(false)
+  isNoPlay    Boolean  @default(false)
 
   penaltyTeam  String?
   penaltyName  String?
@@ -466,9 +477,9 @@ model Play {
 // field 110 -> 100 and moving the goalposts back, and no rescaling recovers it
 // because field-position value is not linear.
 model EpValue {
-  id      Int     @id @default(autoincrement())
-  ruleEra RuleEra
-  down    Int
+  id             Int      @id @default(autoincrement())
+  ruleEra        RuleEra
+  down           Int
   // "1-3", "4-6", "7-10", "11+" — yards to go, bucketed because the raw value
   // is far too sparse to average at ~14k plays a season.
   distanceBucket String
@@ -479,8 +490,8 @@ model EpValue {
   // Plays this cell was averaged over. Kept because it is the honest measure of
   // how much to trust the cell, and because lookups pool sparse cells into
   // coarser ones rather than returning a mean of nine plays.
-  sampleSize Int
-  fittedAt   DateTime @default(now())
+  sampleSize     Int
+  fittedAt       DateTime @default(now())
 
   @@unique([ruleEra, down, distanceBucket, yardLineBucket])
   @@index([ruleEra])

@@ -290,3 +290,28 @@ describe('parseStoredGames', () => {
         expect((await parseStoredGames()).games).toBe(1)
     })
 })
+
+describe('fixture metadata', () => {
+    it('lifts home, away and kickoff time out of matchInfo so reads never open the blob', async () => {
+        await seedTeams()
+        await seedGame()
+        await parseGame(FIXTURE_ID)
+        const game = await db.game.findUniqueOrThrow({ where: { id: FIXTURE_ID } })
+        expect(game.homeGeniusTeamId).toBe(CGY)
+        expect(game.awayGeniusTeamId).toBe(SSK)
+        expect(game.startedAt?.toISOString()).toBe('2026-05-18T19:00:00.000Z')
+    })
+
+    it('leaves an unknown club null rather than failing the foreign key', async () => {
+        await seedTeams()
+        const payload = JSON.parse(PAYLOAD)
+        payload.data.matchInfo.awayTeam.competitorId = '999999'
+        payload.data.matchInfo.scheduledStartTime = 'not a date'
+        await seedGame(2026, JSON.stringify(payload))
+        await parseGame(FIXTURE_ID)
+        const game = await db.game.findUniqueOrThrow({ where: { id: FIXTURE_ID } })
+        expect(game.homeGeniusTeamId).toBe(CGY)
+        expect(game.awayGeniusTeamId).toBeNull()
+        expect(game.startedAt).toBeNull()
+    })
+})
