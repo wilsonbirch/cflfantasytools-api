@@ -64,6 +64,7 @@ const TABLES = [
     'Match',
     'Gameweek',
     'FeedSnapshot',
+    'EpValue',
     'Play',
     'Drive',
     'Game',
