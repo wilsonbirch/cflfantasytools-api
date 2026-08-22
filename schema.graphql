@@ -89,6 +89,19 @@ The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://
 """
 scalar JSON
 
+type Job {
+  attempts: Int!
+  createdAt: DateTime!
+  error: String
+  finishedAt: DateTime
+  id: Int!
+  kind: String!
+  payload: JSON!
+  runAt: DateTime!
+  startedAt: DateTime
+  status: JobStatus!
+}
+
 """Freshness of one scheduled background job."""
 type JobHealth {
   ageMinutes: Int
@@ -106,6 +119,9 @@ enum JobStatus {
 }
 
 type Mutation {
+  """Admin only. Unknown kinds are rejected with BAD_USER_INPUT."""
+  enqueueJob(kind: String!, payload: JSON): Job!
+
   """Wrong email and wrong password fail identically."""
   login(email: String!, password: String!): AuthPayload!
 
@@ -126,6 +142,9 @@ type Mutation {
 
   """Signed link from a notification email; needs no session."""
   unsubscribeWithToken(token: String!): Boolean!
+
+  """Admin only."""
+  updateTeamSource(id: Int!, input: TeamSourceInput!): TeamSource!
 }
 
 type NotificationSubscription {
@@ -245,6 +264,9 @@ type Query {
   """Whether each scheduled job has run recently enough."""
   jobHealth: [JobHealth!]!
 
+  """Admin only. Newest first."""
+  jobs(kind: String, limit: Int = 50, status: JobStatus): [Job!]!
+
   """Null when signed out."""
   me: Account
 
@@ -254,9 +276,15 @@ type Query {
   """Sorted by targets + pass attempts + rush attempts, descending."""
   playerSeasonStats(limit: Int = 100, offset: Int = 0, teamSlug: String, year: Int!): [PlayerSeasonStats!]!
 
+  """Admin only. Newest first."""
+  scrapeRuns(limit: Int = 50, teamSlug: String): [ScrapeRun!]!
+
   """Every year with a game or a fixture, newest first."""
   seasons: [Int!]!
   team(slug: String!): Team
+
+  """Admin only."""
+  teamSources: [TeamSource!]!
   teams: [Team!]!
 }
 
@@ -269,6 +297,17 @@ enum RuleEra {
   E2026
   E2027
   PRE_2026
+}
+
+type ScrapeRun {
+  addedCount: Int
+  error: String
+  finishedAt: DateTime
+  id: Int!
+  itemCount: Int
+  startedAt: DateTime!
+  status: ScrapeStatus!
+  team: Team!
 }
 
 enum ScrapeStatus {
@@ -303,6 +342,30 @@ type TeamBoxScore {
   team: Team!
   totalYards: Int!
   turnovers: Int!
+}
+
+type TeamSource {
+  config: JSON!
+  enabled: Boolean!
+  id: Int!
+  kind: String!
+  lastError: String
+  lastItemCount: Int
+  lastOkAt: DateTime
+  requiresBrowser: Boolean!
+  strategy: String!
+  team: Team!
+  updatedAt: DateTime!
+  url: String!
+}
+
+"""Every field optional; omitted fields are left unchanged."""
+input TeamSourceInput {
+  config: JSON
+  enabled: Boolean
+  requiresBrowser: Boolean
+  strategy: String
+  url: String
 }
 
 """Targets to one (depth, direction) zone."""
