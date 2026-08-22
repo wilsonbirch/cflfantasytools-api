@@ -46,6 +46,13 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     'depth-chart-team': async (payload) => {
         const { teamId, year } = asRecord(payload)
         if (typeof teamId !== 'number') throw new Error('depth-chart-team requires a teamId')
-        await checkTeam(teamId, typeof year === 'number' ? year : currentSeasonYear())
+        const result = await checkTeam(
+            teamId,
+            typeof year === 'number' ? year : currentSeasonYear(),
+        )
+        // A scrape that could not load the page is an outage, so fail the job and
+        // let the retry ladder / Job table show it. REJECTED stays non-fatal: that
+        // is the data-quality guard refusing a parse, not a site being down.
+        if (result.status === 'FAILED') throw new Error(`team ${teamId}: ${result.error}`)
     },
 }

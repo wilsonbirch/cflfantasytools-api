@@ -47,7 +47,10 @@ async function renderWithBrowser(url: string): Promise<string> {
     try {
         const page = await browser.newPage()
         await page.setViewport({ width: 1280, height: 1024 })
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30_000 })
+        // domcontentloaded, not networkidle2: club pages carry Google ad beacons
+        // that never go idle (OTT timed out at 30s on every sweep from Fly), and
+        // the cards are rendered from inline data, so there is nothing to wait for.
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
         return await page.content()
     } finally {
         await browser.close().catch((err) => logger.warn(fileName, `browser close: ${String(err)}`))
