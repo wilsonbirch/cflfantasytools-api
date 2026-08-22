@@ -1,3 +1,19 @@
+type Account {
+  createdAt: DateTime!
+  email: String!
+  id: Int!
+  role: Role!
+  uuid: String!
+}
+
+type AuthPayload {
+  accessToken: String!
+  account: Account!
+
+  """One-time use. Each refresh returns a new token and revokes this one."""
+  refreshToken: String!
+}
+
 """
 A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
 """
@@ -84,6 +100,35 @@ enum JobStatus {
   PENDING
   RUNNING
   SUCCEEDED
+}
+
+type Mutation {
+  """Wrong email and wrong password fail identically."""
+  login(email: String!, password: String!): AuthPayload!
+
+  """Revokes the session the refresh token belongs to. Idempotent."""
+  logout(refreshToken: String!): Boolean!
+
+  """Rotates the token; reusing a rotated token revokes the whole session."""
+  refresh(refreshToken: String!): AuthPayload!
+  register(email: String!, password: String!): AuthPayload!
+
+  """Signed in only."""
+  subscribe(teamSlug: String!): NotificationSubscription!
+
+  """Signed in only."""
+  unsubscribe(teamSlug: String!): NotificationSubscription!
+
+  """Signed link from a notification email; needs no session."""
+  unsubscribeWithToken(token: String!): Boolean!
+}
+
+type NotificationSubscription {
+  createdAt: DateTime!
+  enabled: Boolean!
+  id: Int!
+  team: Team!
+  updatedAt: DateTime!
 }
 
 enum PassDepth {
@@ -194,6 +239,12 @@ type Query {
 
   """Whether each scheduled job has run recently enough."""
   jobHealth: [JobHealth!]!
+
+  """Null when signed out."""
+  me: Account
+
+  """Signed in only."""
+  mySubscriptions: [NotificationSubscription!]!
 
   """Sorted by targets + pass attempts + rush attempts, descending."""
   playerSeasonStats(limit: Int = 100, offset: Int = 0, teamSlug: String, year: Int!): [PlayerSeasonStats!]!
