@@ -8,6 +8,9 @@ type Account {
 
 type AuthPayload {
   accessToken: String!
+
+  """Refresh before this; the access token is rejected after it."""
+  accessTokenExpiresAt: DateTime!
   account: Account!
 
   """One-time use. Each refresh returns a new token and revokes this one."""
@@ -111,6 +114,8 @@ type Mutation {
 
   """Rotates the token; reusing a rotated token revokes the whole session."""
   refresh(refreshToken: String!): AuthPayload!
+
+  """Password must be at least 8 characters."""
   register(email: String!, password: String!): AuthPayload!
 
   """Signed in only."""
@@ -248,6 +253,9 @@ type Query {
 
   """Sorted by targets + pass attempts + rush attempts, descending."""
   playerSeasonStats(limit: Int = 100, offset: Int = 0, teamSlug: String, year: Int!): [PlayerSeasonStats!]!
+
+  """Every year with a game or a fixture, newest first."""
+  seasons: [Int!]!
   team(slug: String!): Team
   teams: [Team!]!
 }

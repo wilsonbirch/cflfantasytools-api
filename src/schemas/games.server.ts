@@ -220,6 +220,17 @@ builder.prismaObject('Game', {
 })
 
 builder.queryFields((t) => ({
+    seasons: t.field({
+        type: ['Int'],
+        description: 'Every year with a game or a fixture, newest first.',
+        resolve: async () => {
+            const [games, matches] = await Promise.all([
+                db.game.findMany({ distinct: ['year'], select: { year: true } }),
+                db.match.findMany({ distinct: ['year'], select: { year: true } }),
+            ])
+            return [...new Set([...games, ...matches].map((r) => r.year))].sort((a, b) => b - a)
+        },
+    }),
     games: t.prismaField({
         type: ['Game'],
         description: 'Newest first. Only games with parsed plays.',
