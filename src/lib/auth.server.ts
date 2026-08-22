@@ -12,7 +12,7 @@ import type { Role } from '~/generated/prisma/client'
 
 const ISSUER = 'cflfantasytools'
 const AUDIENCE = 'cflfantasytools'
-const ACCESS_TOKEN_TTL = '15m'
+export const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000
 
 export const REFRESH_TOKEN_TTL_MS = 60 * 24 * 60 * 60 * 1000
 
@@ -52,7 +52,7 @@ export async function signAccessToken(claims: {
         .setIssuer(ISSUER)
         .setAudience(AUDIENCE)
         .setIssuedAt()
-        .setExpirationTime(ACCESS_TOKEN_TTL)
+        .setExpirationTime(`${ACCESS_TOKEN_TTL_MS / 1000}s`)
         .sign(secret())
 }
 

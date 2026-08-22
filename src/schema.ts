@@ -6,5 +6,8 @@ import '~/schemas/health.server'
 import '~/schemas/teams.server'
 import '~/schemas/depthCharts.server'
 import '~/schemas/games.server'
+import '~/schemas/auth.server'
+import '~/schemas/subscriptions.server'
+import '~/schemas/admin.server'
 
 export const schema = builder.toSchema({})
