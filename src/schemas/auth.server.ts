@@ -18,10 +18,19 @@ const AccountType = builder.prismaObject('Account', {
 })
 
 const AuthPayload = builder
-    .objectRef<{ accessToken: string; refreshToken: string; account: Account }>('AuthPayload')
+    .objectRef<{
+        accessToken: string
+        accessTokenExpiresAt: Date
+        refreshToken: string
+        account: Account
+    }>('AuthPayload')
     .implement({
         fields: (t) => ({
             accessToken: t.exposeString('accessToken'),
+            accessTokenExpiresAt: t.expose('accessTokenExpiresAt', {
+                type: 'DateTime',
+                description: 'Refresh before this; the access token is rejected after it.',
+            }),
             refreshToken: t.exposeString('refreshToken', {
                 description: 'One-time use. Each refresh returns a new token and revokes this one.',
             }),
@@ -52,6 +61,7 @@ builder.mutationType({
     fields: (t) => ({
         register: t.field({
             type: AuthPayload,
+            description: 'Password must be at least 8 characters.',
             args: {
                 email: t.arg.string({ required: true }),
                 password: t.arg.string({ required: true }),

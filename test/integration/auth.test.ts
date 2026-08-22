@@ -6,13 +6,14 @@ import { executeOperation } from './setup/yogaClient'
 
 type Payload = {
     accessToken: string
+    accessTokenExpiresAt: string
     refreshToken: string
     account: { id: number; uuid: string; email: string; role: string }
 }
 
 const REGISTER = `mutation ($email: String!, $password: String!) {
     register(email: $email, password: $password) {
-        accessToken refreshToken account { id uuid email role }
+        accessToken accessTokenExpiresAt refreshToken account { id uuid email role }
     }
 }`
 const LOGIN = `mutation ($email: String!, $password: String!) {
@@ -48,6 +49,13 @@ describe('register', () => {
         expect(p.account.role).toBe('USER')
         expect(p.accessToken).toBeTruthy()
         expect(p.refreshToken).toBeTruthy()
+        // Expiry is handed over so clients need not decode the JWT; it sits
+        // about fifteen minutes out and never later than the token's own exp.
+        const exp = JSON.parse(Buffer.from(p.accessToken.split('.')[1], 'base64url').toString())
+            .exp as number
+        const expiresAt = new Date(p.accessTokenExpiresAt).getTime()
+        expect(expiresAt).toBeGreaterThan(Date.now() + 14 * 60_000)
+        expect(expiresAt).toBeLessThanOrEqual(exp * 1000 + 1000)
 
         const me = await executeOperation<{ me: { email: string } }>(
             { query: ME },

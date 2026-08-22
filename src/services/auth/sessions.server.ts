@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import {
+    ACCESS_TOKEN_TTL_MS,
     generateRefreshToken,
     hashRefreshToken,
     REFRESH_TOKEN_TTL_MS,
@@ -8,7 +9,7 @@ import {
 import { db } from '~/lib/db.server'
 import type { Account } from '~/generated/prisma/client'
 
-export type IssuedTokens = { accessToken: string; refreshToken: string }
+export type IssuedTokens = { accessToken: string; accessTokenExpiresAt: Date; refreshToken: string }
 
 const invalidRefresh = (): GraphQLError =>
     new GraphQLError('Refresh token is invalid or expired', {
@@ -29,12 +30,14 @@ export async function issueSession(
             rotatedFromId,
         },
     })
+    // Stamped before signing so it can only be earlier than the real exp.
+    const accessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS)
     const accessToken = await signAccessToken({
         accountUuid: account.uuid,
         role: account.role,
         sessionUuid: session.uuid,
     })
-    return { accessToken, refreshToken }
+    return { accessToken, accessTokenExpiresAt, refreshToken }
 }
 
 /**

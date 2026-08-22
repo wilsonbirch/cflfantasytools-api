@@ -107,6 +107,31 @@ describe('depth charts', () => {
     })
 })
 
+describe('seasons', () => {
+    it('lists every year with a game or a fixture, newest first, without duplicates', async () => {
+        await seedTeams()
+        await db.game.create({ data: { id: 1, response: '{}', year: 2024 } })
+        await db.game.create({ data: { id: 2, response: '{}', year: 2026 } })
+        const gw = await db.gameweek.create({
+            data: { gameZoneId: 1, name: 'Week 1', status: 'x', year: 2026 },
+        })
+        await db.match.create({
+            data: { gameZoneId: 1, gameweekId: gw.id, status: 'x', year: 2025 },
+        })
+        await db.match.create({
+            data: { gameZoneId: 2, gameweekId: gw.id, status: 'x', year: 2026 },
+        })
+        const r = await executeOperation<{ seasons: number[] }>({ query: '{ seasons }' })
+        expect(r.errors).toBeUndefined()
+        expect(r.data?.seasons).toEqual([2026, 2025, 2024])
+    })
+
+    it('is empty on a fresh database', async () => {
+        const r = await executeOperation<{ seasons: number[] }>({ query: '{ seasons }' })
+        expect(r.data?.seasons).toEqual([])
+    })
+})
+
 describe('games', () => {
     it('exposes a parsed game with teams, score, drives, plays and stats', async () => {
         await seedTeams()
