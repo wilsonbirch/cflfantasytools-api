@@ -698,9 +698,10 @@ model Player {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  Team      Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  snapshots PlayerStatSnapshot[]
-  points    PlayerGameweekPoints[]
+  Team        Team?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  snapshots   PlayerStatSnapshot[]
+  points      PlayerGameweekPoints[]
+  projections Projection[]
 
   @@index([teamId, position])
   @@index([lastName])
@@ -739,8 +740,9 @@ model Gameweek {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  matches Match[]
-  points  PlayerGameweekPoints[]
+  matches     Match[]
+  points      PlayerGameweekPoints[]
+  projections Projection[]
 
   @@index([year])
 }
@@ -769,6 +771,42 @@ model Match {
   points   PlayerGameweekPoints[]
 
   @@index([year, date])
+}
+
+// Our projection for one player in one gameweek, one row per fit. Every fit
+// writes new rows rather than updating, so what we said before kickoff stays
+// auditable against what happened; the newest fittedAt for a gameweek is the
+// live one. Per-game expectations of PRODUCTION only — fantasy points are
+// computed at read time from src/services/fantasy/scoring.ts so a scoring
+// change never strands stored numbers. See src/services/projections/model.ts.
+model Projection {
+  id                  Int      @id @default(autoincrement())
+  playerId            Int
+  gameweekId          Int
+  fittedAt            DateTime
+  opponentTeamId      Int?
+  // Receiver slot (1S, 2WK, ...) the role baseline came from; null if unknown.
+  alignment           String?
+  // Games behind the player term. 0 means pure baseline + offsets.
+  games               Int
+  passAttempts        Float
+  passingYards        Float
+  passingTouchdowns   Float
+  interceptions       Float
+  rushAttempts        Float
+  rushingYards        Float
+  rushingTouchdowns   Float
+  targets             Float
+  receptions          Float
+  receivingYards      Float
+  receivingTouchdowns Float
+  epa                 Float
+
+  Player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  Gameweek Gameweek @relation(fields: [gameweekId], references: [id], onDelete: Cascade)
+
+  @@index([gameweekId, fittedAt])
+  @@index([playerId, gameweekId])
 }
 
 // Fantasy points per player per gameweek, keyed by both the gameweek and (where

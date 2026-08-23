@@ -186,6 +186,11 @@ type FantasyPlayer {
   pointsHistory: [GameweekPoints!]!
   position: PlayerPosition!
 
+  """
+  Our projection for the gameweek the query asked for; null when none has been fitted.
+  """
+  projection: Projection
+
   """Game Zone salary as of the latest sync."""
   salary: Int
 
@@ -200,6 +205,9 @@ type FantasyPlayer {
   """Game Zone's availability status as the feed reports it."""
   status: String
   team: Team
+
+  """projection.points per $1000 of salary; null without both."""
+  value: Float
 
   """Salary change this week, as the feed reports it."""
   weekSalaryChange: Int
@@ -455,6 +463,49 @@ type PlayerSeasonStats {
   year: Int!
 }
 
+"""
+Projected production for one player in one gameweek: role baseline + player quality (shrunk toward the league mean by sample size) + offensive-coordinator offset + opposing defensive-coordinator offset, fitted on the current rule era only. Every number is a per-game expectation.
+"""
+type Projection {
+  """
+  Receiver position (1S, 2WK, ...) the role baseline was taken from; null when no chart names the player.
+  """
+  alignment: String
+
+  """
+  Expected EPA of the plays the player throws, carries or is targeted on.
+  """
+  epa: Float!
+  fittedAt: DateTime!
+
+  """
+  Games behind the player term; the fewer, the more the projection is pooled.
+  """
+  games: Int!
+  gameweek: Gameweek!
+  id: Int!
+  interceptions: Float!
+
+  """The opposing team; null when the fixture is not known."""
+  opponent: Team
+  passAttempts: Float!
+  passingTouchdowns: Float!
+  passingYards: Float!
+  player: FantasyPlayer!
+
+  """
+  Fantasy points under the current Game Zone scoring, computed at read time from the stat projections.
+  """
+  points: Float!
+  receivingTouchdowns: Float!
+  receivingYards: Float!
+  receptions: Float!
+  rushAttempts: Float!
+  rushingTouchdowns: Float!
+  rushingYards: Float!
+  targets: Float!
+}
+
 type Query {
   """
   Staff in post at any point during the season, every club unless teamSlug is given; by team, role, effectiveFrom.
@@ -496,6 +547,11 @@ type Query {
 
   """Sorted by targets + pass attempts + rush attempts, descending."""
   playerSeasonStats(limit: Int = 100, offset: Int = 0, teamSlug: String, year: Int!): [PlayerSeasonStats!]!
+
+  """
+  The latest fitted projections for one gameweek (week is Gameweek.week), highest points first.
+  """
+  projections(teamSlug: String, week: Int!, year: Int!): [Projection!]!
 
   """Admin only. Newest first."""
   scrapeRuns(limit: Int = 50, teamSlug: String): [ScrapeRun!]!
