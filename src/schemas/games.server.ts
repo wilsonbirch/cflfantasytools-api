@@ -187,17 +187,23 @@ builder.prismaObject('Game', {
         date: t.expose('startedAt', { type: 'DateTime', nullable: true }),
         homeTeam: t.relation('HomeTeam', { nullable: true }),
         awayTeam: t.relation('AwayTeam', { nullable: true }),
+        // The feed's official final when the payload carried one; otherwise
+        // summed from plays. The sum is right for clean 2026 payloads but the
+        // 2023/24 corpus has plays stamped with the wrong team in places, so the
+        // stored final is the authority whenever it exists.
         homeScore: t.int({
             nullable: true,
-            select: { homeGeniusTeamId: true, ...statPlays },
+            select: { homeScore: true, homeGeniusTeamId: true, ...statPlays },
             resolve: (g) =>
+                g.homeScore ??
                 teamBoxScores(g.Plays).find((b) => b.geniusTeamId === g.homeGeniusTeamId)?.points ??
                 null,
         }),
         awayScore: t.int({
             nullable: true,
-            select: { awayGeniusTeamId: true, ...statPlays },
+            select: { awayScore: true, awayGeniusTeamId: true, ...statPlays },
             resolve: (g) =>
+                g.awayScore ??
                 teamBoxScores(g.Plays).find((b) => b.geniusTeamId === g.awayGeniusTeamId)?.points ??
                 null,
         }),

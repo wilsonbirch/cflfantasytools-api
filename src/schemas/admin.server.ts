@@ -25,6 +25,10 @@ builder.prismaObject('ScrapeRun', {
         status: t.expose('status', { type: ScrapeStatusEnum }),
         itemCount: t.exposeInt('itemCount', { nullable: true }),
         addedCount: t.exposeInt('addedCount', { nullable: true }),
+        revisedCount: t.exposeInt('revisedCount', {
+            nullable: true,
+            description: 'Charts whose PDF changed under an unchanged link this run.',
+        }),
         error: t.exposeString('error', { nullable: true }),
         startedAt: t.expose('startedAt', { type: 'DateTime' }),
         finishedAt: t.expose('finishedAt', { type: 'DateTime', nullable: true }),

@@ -28,6 +28,12 @@ async function seedTeams() {
 const seedGame = (year = 2026, response = PAYLOAD) =>
     db.game.create({ data: { id: FIXTURE_ID, response, year } })
 
+// Montreal (86680) v Ottawa (88019), 2026 week 12, final 46–16. Carries a
+// pick-six stamped with the team that threw it and a touchdown that stood
+// under a flag — the two cases that made the play sum read 34–22.
+const MTL_OTT = readFileSync('test/fixtures/pbp/widget-payload-13419716.json', 'utf8')
+const MTL_OTT_ID = 13419716
+
 // The fixture cut down to its first n plays, standing in for a game captured
 // while it was still being played.
 function truncatedTo(n: number): string {
@@ -184,6 +190,49 @@ describe('parseGame', () => {
 
         expect(await db.drive.count()).toBe(30)
         expect(await db.play.count()).toBe(138)
+    })
+
+    it('stores the official final and signs scores by whose goal line was reached', async () => {
+        await seedTeams()
+        await db.team.create({
+            data: {
+                slug: 'montreal',
+                abbreviation: 'MTL',
+                name: 'Montreal',
+                geniusTeamId: '86680',
+            },
+        })
+        await db.team.create({
+            data: { slug: 'ottawa', abbreviation: 'OTT', name: 'Ottawa', geniusTeamId: '88019' },
+        })
+        await db.game.create({ data: { id: MTL_OTT_ID, response: MTL_OTT, year: 2026 } })
+        await parseGame(MTL_OTT_ID)
+
+        const game = await db.game.findUniqueOrThrow({ where: { id: MTL_OTT_ID } })
+        expect(game).toMatchObject({
+            homeGeniusTeamId: '86680',
+            awayGeniusTeamId: '88019',
+            homeScore: 46,
+            awayScore: 16,
+        })
+
+        // The play sum agrees with the official final once a touchdown at the
+        // play team's own goal line counts for the opponent and a touchdown
+        // under a non-nullifying flag counts at all.
+        const plays = await db.play.findMany({
+            where: { gameId: MTL_OTT_ID },
+            select: { geniusTeamId: true, points: true },
+        })
+        const sum = (team: string) =>
+            plays.reduce(
+                (n, p) =>
+                    n +
+                    (p.geniusTeamId === team ? Math.max(p.points ?? 0, 0) : 0) +
+                    (p.geniusTeamId !== team ? Math.max(-(p.points ?? 0), 0) : 0),
+                0,
+            )
+        expect(sum('86680')).toBe(46)
+        expect(sum('88019')).toBe(16)
     })
 
     it('returns null for an unplayed fixture rather than failing', async () => {
