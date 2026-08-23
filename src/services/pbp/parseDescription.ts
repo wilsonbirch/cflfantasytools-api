@@ -199,20 +199,24 @@ function parseYards(description: string): number | null {
 }
 
 /**
- * A touchdown scored on a RETURN, which the feed does not mark as one.
+ * A touchdown, read from the text: the ball REACHING A GOAL LINE ("return 84
+ * yards to the TOR00 TOUCHDOWN"), not the mere presence of the word. That
+ * distinction matters: descriptions also say TOUCHDOWN when one was called
+ * back, and matching the word alone would invent scores that never counted.
  *
- * `subType` carries "Touchdown" for an ordinary scoring play, but a punt or
- * kickoff run back, a missed field goal returned, or a strip-sack recovered and
- * run in arrives with `subType` null or "Failed". 45 of them in the 2023/24
- * corpus were therefore worth nothing at all — six points missing from the
- * expected-points label each time.
- *
- * The pattern is the ball REACHING A GOAL LINE ("return 84 yards to the TOR00
- * TOUCHDOWN"), not the mere presence of the word. That distinction matters:
- * descriptions also say TOUCHDOWN when one was called back, and matching the
- * word alone would invent scores that never counted.
+ * The captured token is WHOSE goal line — the feed is not consistent about the
+ * abbreviation ("SSK00", "SASK00", "Ottawa00" all occur), so it is matched
+ * against the club's abbreviation or the start of its name.
  */
-const RETURN_TOUCHDOWN = /to the [A-Z]{2,3}00 TOUCHDOWN/
+const GOAL_LINE_TOUCHDOWN = /to the ([A-Za-z]{2,})00 TOUCHDOWN/
+
+/** Enough of a club to recognise its own goal line in play text. */
+export type TeamIdentity = { abbreviation: string; name: string }
+
+const isOwnGoalLine = (token: string, own: TeamIdentity): boolean => {
+    const t = token.toUpperCase()
+    return t === own.abbreviation.toUpperCase() || own.name.toUpperCase().startsWith(t)
+}
 
 /**
  * Points scored ON THIS PLAY, signed positive for the play's own team.
@@ -226,20 +230,33 @@ const RETURN_TOUCHDOWN = /to the [A-Z]{2,3}00 TOUCHDOWN/
  * plain sum. `Single` is the rouge — the play class the 2026 rule change cut
  * down, and the reason a model must never pool eras.
  *
- * A RETURN TOUCHDOWN IS NEGATIVE SIX, not six. Every one of them is scored by
- * the side that did not have the ball — a punt or kickoff coverage breakdown, a
- * missed field goal run back, a strip-sack picked up by the defence — and this
- * function returns points from the perspective of the team whose play it is.
- * An interception returned for a touchdown is NOT one of these: the feed gives
- * that play the scoring team's own id and marks it `Touchdown`, so it is
- * already positive for the team it belongs to and gets signed by the caller.
+ * WHO SCORED A TOUCHDOWN IS READ FROM WHOSE GOAL LINE THE BALL REACHED, not
+ * from the row's team id. The feed is inconsistent there: a pick-six is stamped
+ * sometimes with the team that threw it and sometimes with the team that ran it
+ * back (37 vs 6 in the 2023/24 corpus), and a 2026 game (MTL–OTT, 13419716)
+ * came out 34–22 instead of 46–16 on the row ids alone. A touchdown at the play
+ * team's OWN goal line was scored by the opponent: -6. Without a team to compare
+ * against, a `Touchdown` row is taken at face value and a return touchdown
+ * (punt, kickoff, missed field goal, strip-sack — `subType` null) as -6, since
+ * those are always scored by the side without the ball.
+ *
+ * A touchdown under a flag (`subType` Penalty) counted unless the text says it
+ * was "nullified" or the snap was "NO PLAY" — roughness after the score is
+ * enforced on the kickoff and the six stand. Checked against the scoreboard
+ * finals of the 2023/24 corpus: each of these two rules on its own moves more
+ * games onto the official score, and both together move the most.
  */
 export function pointsForPlay(
     type: string,
     subType: string | null,
     description = '',
+    ownTeam?: TeamIdentity,
 ): number | null {
-    if (subType === 'Touchdown') return 6
+    const goalLine = description.match(GOAL_LINE_TOUCHDOWN)
+    const own = goalLine !== null && ownTeam !== undefined && isOwnGoalLine(goalLine[1], ownTeam)
+    const six = own ? -6 : 6
+
+    if (subType === 'Touchdown') return six
     if (subType === 'Single') return 1
     if (subType === 'Success') {
         if (type === 'FieldGoal') return 3
@@ -247,12 +264,9 @@ export function pointsForPlay(
         if (type === 'TwoPoints') return 2
         return null
     }
-    // `Penalty` is deliberately excluded rather than inferred. On those plays a
-    // touchdown may have stood with an offsetting flag or been wiped by it, and
-    // the description does not reliably say which — 53 such plays in the corpus.
-    // Missing a score is recoverable; inventing one poisons the training label.
-    if (subType !== 'Penalty' && RETURN_TOUCHDOWN.test(description)) return -6
-    return null
+    if (goalLine === null) return null
+    if (subType === 'Penalty') return /nullified|NO PLAY/.test(description) ? null : six
+    return ownTeam === undefined ? -6 : six
 }
 
 /** Detached so the penalty branch stays readable; `NO PLAY` wipes the snap. */
@@ -282,6 +296,7 @@ export function parseDescription(
     type: string,
     subType: string | null,
     fieldLength = 110,
+    ownTeam?: TeamIdentity,
 ): ParsedDescription {
     const isPass = type === 'Pass'
     const isKick = type === 'Punt' || type === 'Kickoff' || type === 'FieldGoal'
@@ -373,7 +388,7 @@ export function parseDescription(
         penaltyTeam: penalty.team,
         penaltyName: penalty.name,
         penaltyYards: penalty.yards,
-        points: pointsForPlay(type, subType, description),
+        points: pointsForPlay(type, subType, description, ownTeam),
     }
 }
 

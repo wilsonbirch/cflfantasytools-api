@@ -3,7 +3,10 @@
 // Split from parsePlays.server.ts on purpose: this is the logic most worth
 // testing exhaustively and least worth booting Postgres for.
 
-import { parseDescription } from './parseDescription'
+import { parseDescription, type TeamIdentity } from './parseDescription'
+
+/** Resolves a Genius team id to the club, for reading whose goal line a score reached. */
+export type TeamLookup = (geniusTeamId: string) => TeamIdentity | undefined
 
 export type RawPlay = {
     id: string
@@ -101,22 +104,33 @@ export type DriveOutcome = {
  *
  * SUMMING THE PLAYS UNSIGNED IS A SIGN ERROR, NOT A ROUNDING ERROR. A drive
  * ending in a pick-six previously came out at +7 for the team that THREW the
- * interception, because the feed correctly stamps the returning team's id on the
- * touchdown and the convert, and both were added as if they were the offence's.
- * Fed into `nextPointOutcome`, that is a 14-point error in the expected-points
- * training label, on exactly the plays a model most needs to get right.
+ * interception, because the convert after it is stamped with the returning
+ * team's id and was added as if it were the offence's. Fed into
+ * `nextPointOutcome`, that is a 14-point error in the expected-points training
+ * label, on exactly the plays a model most needs to get right.
+ *
+ * The touchdown row itself is stamped with EITHER team depending on the game,
+ * which is why `teamOf` is passed down: pointsForPlay reads whose goal line the
+ * ball reached and signs the six for the row's team, so the row-versus-drive
+ * comparison below is right under both stampings.
  *
  * The sum still works because a play is worth its own points and nothing else —
  * a touchdown 6, its convert 1 or 2, separately (see pointsForPlay) — and
  * because a return touchdown is already negative for the team it belongs to.
  */
-export function driveOutcome(drive: GroupedDrive): DriveOutcome {
+export function driveOutcome(drive: GroupedDrive, teamOf?: TeamLookup): DriveOutcome {
     let total: number | null = null
     for (const play of drive.plays) {
-        const { points } = parseDescription(play.description, play.type, play.subType)
+        const { points } = parseDescription(
+            play.description,
+            play.type,
+            play.subType,
+            undefined,
+            teamOf?.(play.teamId),
+        )
         if (points === null) continue
-        // Whose play it is decides the sign. The feed stamps a defensive
-        // touchdown and the convert that follows with the SCORING team's id.
+        // Whose row it is decides the sign; the points are already signed for
+        // that row's team.
         const signed = play.teamId === drive.geniusTeamId ? points : -points
         total = (total ?? 0) + signed
     }
@@ -143,8 +157,8 @@ export function driveOutcome(drive: GroupedDrive): DriveOutcome {
  * A drive that scores is its own next scoring drive, which is why the scan
  * starts at `i` rather than `i + 1`.
  */
-export function nextPointOutcomes(drives: GroupedDrive[]): (number | null)[] {
-    const outcomes = drives.map(driveOutcome)
+export function nextPointOutcomes(drives: GroupedDrive[], teamOf?: TeamLookup): (number | null)[] {
+    const outcomes = drives.map((d) => driveOutcome(d, teamOf))
     return drives.map((drive, i) => {
         for (let j = i; j < drives.length; j++) {
             if (drives[j].half !== drive.half) return null
