@@ -30,9 +30,11 @@ WORKDIR /app
 
 # Chromium for the depth-chart scraper. Most clubs' pages are parsed with a
 # plain fetch + linkedom; only the ones that need JS launch a browser, but the
-# worker and web share one image so it must be present.
+# worker and web share one image so it must be present. poppler-utils supplies
+# pdftotext, which turns the archived chart PDFs into the column-preserving
+# text the receiver-position parser reads.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium fonts-liberation ca-certificates \
+    && apt-get install -y --no-install-recommends chromium fonts-liberation ca-certificates poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium

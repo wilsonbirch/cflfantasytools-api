@@ -3,6 +3,7 @@ import { logger } from '~/lib/logger.server'
 import { getDepthChartInfo } from './season.server'
 import { archiveChartFiles } from './archiveFiles.server'
 import { diffSnapshot } from './diffSnapshot.server'
+import { parseChartPositions } from './parsePositions.server'
 import { extract, isStrategy, type DepthChartItem } from './scrape/extractors'
 import { fetchPage } from './scrape/fetchPage.server'
 
@@ -93,6 +94,9 @@ export async function checkTeam(
     // re-check the newest few for an in-place replacement. Its own failures are
     // logged inside and never fail the scrape.
     const files = await archiveChartFiles(teamId, year, fetchImpl)
+    // ...and read the receiver alignment off anything newly archived. Status is
+    // recorded per chart; a club whose layout cannot be read is UNSUPPORTED.
+    const positions = await parseChartPositions(teamId, year)
 
     await db.scrapeRun.update({
         where: { id: run.id },
@@ -108,7 +112,8 @@ export async function checkTeam(
     logger.info(
         fileName,
         `team ${teamId}: ${verdict.kind}, ${items.length} items, ${added.length} new, ` +
-            `${files.archived} archived, ${files.revised} revised, ${files.failed} fetch failures`,
+            `${files.archived} archived, ${files.revised} revised, ${files.failed} fetch failures, ` +
+            `${positions.ok}/${positions.parsed} charts parsed`,
     )
     return {
         teamId,

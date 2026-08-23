@@ -51,6 +51,9 @@ jobs:
                   node-version: 22
                   cache: npm
             - run: npm ci
+            # pdftotext, for the depth-chart PDF fixtures the position parser
+            # is tested against — the same binary the runtime image installs.
+            - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
             # Unit + integration (Testcontainers Postgres on the preinstalled
             # Docker daemon), with the coverage thresholds from vitest.config.ts.
             - run: npm run test:coverage
