@@ -1,6 +1,8 @@
 import { builder } from '~/builder'
 import { db } from '~/lib/db.server'
 import { PassDepthEnum, PassDirectionEnum, RuleEraEnum } from '~/schemas/enums.server'
+import { alignmentFor, primaryAlignment } from '~/services/stats/alignment'
+import { gameAlignments, seasonAlignments } from '~/services/stats/alignment.server'
 import {
     playerLines,
     STAT_PLAY_SELECT,
@@ -122,12 +124,17 @@ const TeamBoxScoreType = builder.objectRef<TeamBoxScore>('TeamBoxScore').impleme
 // through a generic field helper: Pothos' expose* typing does not survive a
 // generic parent shape, and two copies of fifteen one-liners beat a cast.
 const PlayerGameStatsType = builder
-    .objectRef<PlayerLine & { gameId: number }>('PlayerGameStats')
+    .objectRef<PlayerLine & { gameId: number; alignment: string | null }>('PlayerGameStats')
     .implement({
         description: 'Per-player production in one game, from plays (no-plays excluded).',
         fields: (t) => ({
             gameId: t.exposeInt('gameId'),
             player: t.exposeString('player', { description: PLAYER_DESCRIPTION }),
+            alignment: t.exposeString('alignment', {
+                nullable: true,
+                description:
+                    "Receiver position (1S, 2WK, ...) on the team's chart for that game's week; null when no parsed chart names the player.",
+            }),
             team: t.prismaField({
                 type: 'Team',
                 resolve: (q, l) => teamByGeniusId(q, l.geniusTeamId),
@@ -150,13 +157,18 @@ const PlayerGameStatsType = builder
     })
 
 const PlayerSeasonStatsType = builder
-    .objectRef<PlayerLine & { year: number }>('PlayerSeasonStats')
+    .objectRef<PlayerLine & { year: number; primaryAlignment: string | null }>('PlayerSeasonStats')
     .implement({
         description: 'Per-player production over a season, from plays (no-plays excluded).',
         fields: (t) => ({
             year: t.exposeInt('year'),
             games: t.exposeInt('games'),
             player: t.exposeString('player', { description: PLAYER_DESCRIPTION }),
+            primaryAlignment: t.exposeString('primaryAlignment', {
+                nullable: true,
+                description:
+                    "Most common receiver position across the season's parsed charts; null when no parsed chart names the player.",
+            }),
             team: t.prismaField({
                 type: 'Team',
                 resolve: (q, l) => teamByGeniusId(q, l.geniusTeamId),
@@ -219,8 +231,18 @@ builder.prismaObject('Game', {
         }),
         playerStats: t.field({
             type: [PlayerGameStatsType],
-            select: { id: true, ...statPlays },
-            resolve: (g) => playerLines(g.Plays).map((l) => ({ ...l, gameId: g.id })),
+            select: { id: true, startedAt: true, ...statPlays },
+            resolve: async (g) => {
+                const lines = playerLines(g.Plays)
+                const charts = await gameAlignments(g.startedAt, [
+                    ...new Set(lines.map((l) => l.geniusTeamId)),
+                ])
+                return lines.map((l) => ({
+                    ...l,
+                    gameId: g.id,
+                    alignment: alignmentFor(l.player, charts.get(l.geniusTeamId) ?? []),
+                }))
+            },
         }),
     }),
 })
@@ -286,9 +308,14 @@ builder.queryFields((t) => ({
                 select: STAT_PLAY_SELECT,
             })
             const start = Math.max(offset ?? 0, 0)
+            const charts = await seasonAlignments(year, teamSlug)
             return playerLines(plays)
                 .slice(start, start + Math.min(Math.max(limit ?? 100, 1), 500))
-                .map((l) => ({ ...l, year }))
+                .map((l) => ({
+                    ...l,
+                    year,
+                    primaryAlignment: primaryAlignment(l.player, charts.get(l.geniusTeamId) ?? []),
+                }))
         },
     }),
 }))

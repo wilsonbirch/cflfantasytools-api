@@ -56,6 +56,14 @@ type DepthChart {
   """Archived copies of the PDF, newest first; one per distinct checksum."""
   files: [DepthChartFile!]!
   id: Int!
+
+  """Null until a parse has been attempted on an archived copy."""
+  parseStatus: DepthChartParseStatus
+
+  """
+  Receiver alignment read from the newest archived copy. Empty unless parseStatus is OK.
+  """
+  positions: [DepthChartPosition!]!
   publishedAt: DateTime!
   season: String!
   title: String!
@@ -91,6 +99,32 @@ type DepthChartList {
   updatedAt: DateTime!
   uuid: String!
   year: Int!
+}
+
+"""
+OK: positions were read. UNSUPPORTED: this club's layout has no parser yet. FAILED: the parser ran and could not read the file.
+"""
+enum DepthChartParseStatus {
+  FAILED
+  OK
+  UNSUPPORTED
+}
+
+"""
+One receiver slot on a chart. `position` counts OUTSIDE-IN: 1S is the widest receiver on the strong/field side, 2WK the second from the outside on the weak/boundary side.
+"""
+type DepthChartPosition {
+  """1 = starter, 2 = second string, 3 = third."""
+  depth: Int!
+
+  """Jersey number when the chart prints one."""
+  jersey: Int
+
+  """Name as printed on the chart."""
+  player: String!
+
+  """1S, 2S, 3S, 1WK, 2WK, ..."""
+  position: String!
 }
 
 type Drive {
@@ -262,6 +296,10 @@ type Play {
 
 """Per-player production in one game, from plays (no-plays excluded)."""
 type PlayerGameStats {
+  """
+  Receiver position (1S, 2WK, ...) on the team's chart for that game's week; null when no parsed chart names the player.
+  """
+  alignment: String
   completions: Int!
   epa: Float!
   gameId: Int!
@@ -295,6 +333,11 @@ type PlayerSeasonStats {
 
   """Name as it appears in the play text, e.g. "#12 A.Smith"."""
   player: String!
+
+  """
+  Most common receiver position across the season's parsed charts; null when no parsed chart names the player.
+  """
+  primaryAlignment: String
   receivingTouchdowns: Int!
   receivingYards: Int!
   receptions: Int!
@@ -337,6 +380,11 @@ type Query {
   """Every year with a game or a fixture, newest first."""
   seasons: [Int!]!
   team(slug: String!): Team
+
+  """
+  The newest parsed chart for the team's week (or the season's newest when week is omitted); null when none has parsed OK.
+  """
+  teamAlignment(teamSlug: String!, week: Int, year: Int!): TeamAlignment
 
   """Admin only."""
   teamSources: [TeamSource!]!
@@ -389,6 +437,15 @@ type Team {
   shortName: String
   slug: String!
   uuid: String!
+}
+
+"""A team's receiver alignment as of one chart."""
+type TeamAlignment {
+  chart: DepthChart!
+  positions: [DepthChartPosition!]!
+  team: Team!
+  week: Int!
+  year: Int!
 }
 
 """One team's totals in a game, from plays (no-plays excluded)."""

@@ -215,6 +215,16 @@ model DepthChartList {
   @@unique([teamId, year])
 }
 
+// Whether the receiver alignment could be read from the archived PDF.
+// UNSUPPORTED: the page has no offensive-line row the parser recognises (a
+// layout it does not know). FAILED: the layout was recognised but no receiver
+// came out. Null until an archived copy has been tried.
+enum DepthChartParseStatus {
+  OK
+  UNSUPPORTED
+  FAILED
+}
+
 model DepthChart {
   id               Int      @id @default(autoincrement())
   uuid             String   @unique @default(uuid())
@@ -230,10 +240,45 @@ model DepthChart {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  Team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  DepthChartList DepthChartList   @relation(fields: [depthChartListId], references: [id], onDelete: Cascade)
-  files          DepthChartFile[]
+  // Result of parsing the newest archived copy; parsedFileId says which one,
+  // so a new version under the same href is parsed again.
+  parseStatus  DepthChartParseStatus?
+  parsedFileId Int?
+  parseError   String?
 
+  Team           Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  DepthChartList DepthChartList       @relation(fields: [depthChartListId], references: [id], onDelete: Cascade)
+  files          DepthChartFile[]
+  positions      DepthChartPosition[]
+
+  @@index([teamId, year])
+}
+
+// One receiver slot on one chart, in Wilson's vocabulary: `position` counts
+// OUTSIDE-IN, S = strong/field side, WK = weak/boundary side (1S is the widest
+// receiver on the field side, 2WK the second from the outside on the boundary
+// side). Read from the PDF's field diagram — the name's horizontal position on
+// the page — never from list order. See docs/memory/project-receiver-position-
+// taxonomy.md. teamId/year are denormalised so a season's alignment can be
+// read without joining through the chart.
+model DepthChartPosition {
+  id           Int      @id @default(autoincrement())
+  depthChartId Int
+  teamId       Int
+  year         Int
+  week         Int
+  // 1S, 2S, 3S, 1WK, 2WK, ...
+  position     String
+  // Name as printed on the chart, e.g. "PHILPOT" or "K. JOHNSON".
+  player       String
+  jersey       Int?
+  // 1 = starter, 2 = second string, 3 = third.
+  depth        Int
+  createdAt    DateTime @default(now())
+
+  DepthChart DepthChart @relation(fields: [depthChartId], references: [id], onDelete: Cascade)
+
+  @@unique([depthChartId, position, depth])
   @@index([teamId, year])
 }
 

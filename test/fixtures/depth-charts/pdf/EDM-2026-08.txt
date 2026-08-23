@@ -1,0 +1,93 @@
+                                       41 | REID*                                       [ 0 | WILLIAMS* DA ]
+                                                                25 | GARNES*            32 | JOHNSON*
+                                              HB
+                                                                      FS                         HB
+    x
+
+    x                                                                                                                [ 23 | BLACKBURN           ]
+    22        29 | ROSS*                                                                                              30 | FORD
+
+                   CB                                                                                                        CB
+                                       49 | PACE
+                                       43 | MOGENSEN* DA
+                                    [ 50 | DUBLANKO         ]                           13 | JACKSON*
+     WEAK/BOUNDARY                                                                                                        STRONG/FIELD
+                                             WLB                45 | DJABOME                    SLB
+                                                                48 | ANDERSON*
+
+         96 | JIBUNOR^                                               MLB                                             47 | BONHOMME
+         99 | HUBERT               92 | CURTIS (56)                                     79 | BASTONE* DA              40 | SMITH
+         2 | CARNEY*               91 | BRINKMAN*                                       97 | MEYER*                   42 | TAYLOR*
+
+                DE                         DT                                                    DT                          DE
+
+         WR                   LT                      LG               C               RG                       RT                       WR
+    3 | MACK*            53 | BORDNER*        64 | O'DONNELL    57 | BEARD       69 | BOYKO            68 | MURRAY*               11 | JULIEN-GRANT
+                                                                65 | KORTE       63 | PASHULA
+
+
+
+
+                      SB                              RB              QB               FB                       R                        SB
+                18 | CEPHUS*                  5 | RANKIN*       7 | FAJARDO*     44 | GRIFFITH         6 | O'LEARY-ORANGE         88 | LUTHER*
+                                              22 | LEAKE* DA    8 | POWELL*                            80 | KETTYLE
+                                                                14 | SNYDER*
+
+
+
+9         K                    P                      LS           KR/PR
+x   26 | BLANCHARD       10 | JULIEN          35 | HLADIK       22 | LEAKE* DA
+
+                                                                                        NATIONAL                     DA Designated American
+                                                                                     * AMERICAN                       (##) Secondary Number
+                                                                                     ^ GLOBAL                        (GTD) Game Time Decision
+                                                                                    [ ] Nationalized American        [ ] Designated National
+                  2026 EDMONTON ELKS NUMERICAL ROSTER                                                             ALPHABETICAL ROSTER                                      PRACTICE ROSTER
+No.   Last Name / First Name    POS   HT     WT      DOB        STATUS      COLLEGE            CFL (ELKS)   No.       Last Name, First Name   No.      Last Name, First Name   Pos.    No.        Last Name, First Name      Pos.
+0        WILLIAMS, Kobe         DB    5'9    174   1998-11-16     A        Arizona State         5 (1)      48          ANDERSON, Nick        56          ALSTON, Elijah       DL       61          HOSSEINI, Arvin              OL
+2        CARNEY, Malik          DL    6'3    230   1995-09-21     A        North Carolina        5 (0)      79         BASTONE, Carmine       93          BEMIY, Francis       DL       33          JOSEPH, Jaaron               DB
+3         MACK, Austin          WR    6'1    208   1997-08-31     A          Ohio State          3 (0)      57           BEARD, David         51          BOSSE, John          OL       37               KING, Isiah             LB
+5         RANKIN, Justin        RB    5'10   215   1997-06-22     A          Kent State          2 (2)      23        BLACKBURN, Tyshon       62          CARTER, Cam          OL       24       POWELL, Shunderrick             RB
+6     O'LEARY-ORANGE, Brendan   WR    6'4    205   1997-06-24     N           Nevada             5 (0)      26        BLANCHARD, Vincent      66          COOPER, Joe          OL       27        TENNISON, Ladarius             DB
+7        FAJARDO, Cody          QB    6'1    215   1992-03-29     A           Nevada             9 (1)      47          BONHOMME, D.K.        84           HILIARE, OJ         WR       54           VREDE, Tyron                LB
+8        POWELL, Taylor         QB    6'1    208   1998-10-21     A       Eastern Michigan       3 (0)      53         BORDNER, Brendan
+10        JULIEN, Jake           P    6'1    227   1998-11-10     N       Eastern Michigan       3 (3)      69            BOYKO, Brett                                         RESERVE
+11    JULIEN-GRANT, Kaion       WR    6'0    210   1996-07-06     N      St. Francis Xavier      6 (1)      91          BRINKMAN, Jared       34         KNIGHT, Isaiah        RB       81           MATHIS, Zach            WR
+13      JACKSON, Kordell        DB    5'10   185   1999-04-09     A         Austin Peay          2 (2)      2            CARNEY, Malik                                         INJURED
+14        SNYDER, Cole          QB    6'2    208   2000-08-12     A       Eastern Michigan       1 (1)      18          CEPHUS, Joshua        No.      Last Name, First Name    G      No.        Last Name, First Name          G
+18      CEPHUS, Joshua          WR    6'2    193   2001-03-05     A            UTSA                R        92           CURTIS, Noah         20        LOGAN JR., Kenny        1       94          NEWELL, Darien               6
+22        LEAKE, Javon          RB    6'0    205   1998-07-01     A           Maryland           4 (2)      45          DJABOME, Dariel       9         METCHIE, Royce          1       46        PLAMONDON, Jacob               6
+23    BLACKBURN, Tyshon         DB    6'2    203   2001-06-20     N            Alberta           2 (0)      50          DUBLANKO, Joel        4        BARLOW, BRANDON          6       17         ROBUSTELLI, Joe               6
+25      GARNES, Chelen          DB 5'11      207   2000-09-25     A         Wake Forest          1 (1)      7            FAJARDO, Cody        52      BURTON-KRAHN, Luke        6       16       SANGMUAH, Benjamin              6
+26    BLANCHARD, Vincent        K     6'1    210   1998-06-17     N             Laval            1 (1)      30            FORD, Tyrell        95           FOX, Tomari          6       90         WILLIAMS, Jordan              6
+29          ROSS, JJ            DB    6'3    195   2001-02-11     A        Western Illinois      1 (1)      25          GARNES, Chelen        38     MAUGA-CLEMENTS, Eteva      6       67      WOODMANSEY, Coulter              6
+30         FORD, Tyrell         DB    6'0    200   1998-03-30     N           Waterloo           3 (1)      44          GRIFFITH, Skyler
+32     JOHNSON, Leonard         DB    6'1    200   1998-07-03     A             Duke             1 (1)      35            HLADIK, Brad
+35        HLADIK, Brad          LS    6'3    245   2000-11-10     N       British Columbia         R        99           HUBERT, Silas
+40        SMITH, Robbie         DL    6'1    245   1997-04-17     N        Wilfrid Laurier       6 (1)      13          JACKSON, Kordell                                   ROSTER CHANGES
+41         REID, Terez          DB    5'10   187   2003-04-01     A        Florida Atlantic        R        96          JIBUNOR, Richard                       IN                                          OUT
+42       TAYLOR, Noah           DL    6'4    240   1999-11-05     A        North Carolina        2 (2)      32         JOHNSON, Leonard
+43     MOGENSEN, Brock          LB    6'2    235   2000-02-09     A        South Dakota          1 (1)      10           JULIEN, Jake
+44      GRIFFITH, Skyler        FB    6'3    225   2003-01-06     N       British Columbia         R        11        JULIEN-GRANT, Kaion
+45      DJABOME, Dariel         LB    6'2    235   2003-07-15     N           Rutgers              R        65            KORTE, Mark
+47      BONHOMME, D.K.          LB    6'0    225   1999-09-08     N       South Alabama          2 (2)      80          KETTYLE, Carter                               FOOTBALL OPERATIONS
+48      ANDERSON, Nick          LB    5'11   230   2000-01-27     A           Tulane             2 (2)      22           LEAKE, Javon                  ED HERVEY                      VP of Football Ops & GM
+49         PACE, Justin         LB    6'0    218   2003-02-14     N           Queen's              R        88            LUTHER, TJ               SPENCER ZIMMERMAN                  Sr. Asst. GM & Director Player Personnel
+50      DUBLANKO, Joel          LB    6'2    231   1998-01-12     N          Cincinnati          2 (2)      3            MACK, Austin                SPENCER BOEHM                    Director, US Scouting
+53     BORDNER, Brendan         OL    6'5    305   1999-03-14     A       Florida Atlantic       2 (0)      97           MEYER, Gavin                 RICH MASSARO                    Director, Canadian Scouting
+57        BEARD, David          OL    6'5    320   1993-02-23     N            Alberta          10 (8)      68          MURRAY, Jordan               NICK PELLETIER                   Director, Football Operations
+63      PASHULA, Chris          OL    6'3    314   2003-08-22     N           Calgary              R        43         MOGENSEN, Brock                 NIC CROSS                      Football Operations Assistant
+64     O'DONNELL, Carter        OL    6'5    315   1998-12-23     N            Alberta           1 (1)      64         O'DONNELL, Carter                                   COACHING STAFF
+65        KORTE, Mark           OL    6'2    293   1996-08-02     N            Alberta           7 (4)      6       O'LEARY-ORANGE, Brendan            MARK KILAM                     Head Coach
+68      MURRAY, Jordan          OL    6'8    300   1997-05-17     A         North Texas          4 (0)      49            PACE, Justin              JORDAN MAKSYMIC                   Offensive Coordinator & Asst. HC
+69        BOYKO, Brett          OL    6'7    305   1992-08-04     N            UNLV              4 (2)      63          PASHULA, Chris                JC SHERRITT                     Defensive Coordinator & LBs Coach
+79     BASTONE, Carmine         DL    6'2    300   2003-06-05     A         Northwestern           R         8          POWELL, Taylor               RICK CAMPBELL                    Coaching Analyst
+80      KETTYLE, Carter         WR 6'0       196   2004-04-25     N            Alberta             R        5            RANKIN, Justin             STEPHEN SORRELLS                  OL Coach & Run Game Coord.
+88        LUTHER, TJ            WR 5'11      189   2000-05-12     A        Gardner-Webb            R        41            REID, Terez                 JASON TUCKER                    Receivers Coach
+91      BRINKMAN, Jared         DL    6'1    290   1999-02-19     A        Northern Iowa         3 (1)      29             ROSS, JJ                  AARON GRYMES                     Defensive Backs Coach
+92        CURTIS, Noah          DL    6'5    302   1998-10-24     N         Keiser Univ.         3 (3)      40           SMITH, Robbie               DES CATELLIER                    Special Teams Coach
+96      JIBUNOR, Richard        DL    6'2    240   1999-05-17     G             Troy             1 (1)      14           SNYDER, Cole                DANNY NESBITT                    Defensive Quality Control
+97        MEYER, Gavin          DL    6'3    290   2002-06-08     A      Southern California       R        42           TAYLOR, Noah                JABARI ARTHUR                    Running Backs Coach
+99        HUBERT, Silas         DL    6'5    260   2002-10-14     N           Queens             1 (1)      0           WILLIAMS, Kobe               CEDRIC DOUGLAS                   Defensive Line Coach
+                                                                                                                                                     ANTHONY VITALE                   Defensive Analyst
+
