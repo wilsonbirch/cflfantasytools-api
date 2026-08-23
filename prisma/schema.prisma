@@ -315,6 +315,11 @@ model Game {
   homeGeniusTeamId String?
   awayGeniusTeamId String?
   startedAt        DateTime?
+  // The official final from the payload's scoreboardInfo, when it carries one.
+  // Preferred over a sum of Play.points: the feed stamps a pick-six with either
+  // team's id depending on the game, so the play sum is a fallback, not truth.
+  homeScore        Int?
+  awayScore        Int?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

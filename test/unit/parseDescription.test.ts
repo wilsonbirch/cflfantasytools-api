@@ -86,6 +86,59 @@ describe('pointsForPlay', () => {
     })
 })
 
+describe('pointsForPlay — whose goal line the ball reached', () => {
+    const OTT = { abbreviation: 'OTT', name: 'Ottawa Redblacks' }
+    const MTL = { abbreviation: 'MTL', name: 'Montreal Alouettes' }
+    const SSK = { abbreviation: 'SSK', name: 'Saskatchewan Roughriders' }
+    // MTL–OTT 2026-08-20 (fixture 13419716): stamped with OTT, the team that
+    // THREW it. Summed by row id the game came out 34–22 against a 46–16 final.
+    const pickSix =
+        'Shotgun #13 J.Maier pass intercepted by #48 K.Ento at OTT29 #48 K.Ento return 29 ' +
+        'yards to the OTT00 TOUCHDOWN, clock 09:05'
+    const ordinary =
+        'Shotgun #10 D.Alexander pass complete short right to #6 T.Philpot caught at OTT-02, ' +
+        'for 5 yards to the OTT00 TOUCHDOWN, clock 05:12'
+
+    it("is minus six when the touchdown is at the play team's own goal line", () => {
+        expect(pointsForPlay('Pass', 'Touchdown', pickSix, OTT)).toBe(-6)
+        // The same row stamped with the returning team instead, which the feed
+        // also does (6 of 43 pick-sixes in the 2023/24 corpus).
+        expect(pointsForPlay('Pass', 'Touchdown', pickSix, MTL)).toBe(6)
+        expect(pointsForPlay('Pass', 'Touchdown', ordinary, MTL)).toBe(6)
+    })
+
+    it('matches the goal-line token against the abbreviation or the club name', () => {
+        const sask =
+            '#11 K.Locksley rush right for 1 yard gain to the SASK00 TOUCHDOWN, clock 00:25'
+        const ottawa =
+            '#36 J.Zema punt 49 yards to the Ottawa03 #17 D.Dedmon return 107 yards to the ' +
+            'MTL00 TOUCHDOWN, clock 04:57'
+        expect(pointsForPlay('Run', 'Touchdown', sask, SSK)).toBe(-6)
+        expect(pointsForPlay('Run', 'Touchdown', sask, OTT)).toBe(6)
+        expect(pointsForPlay('Punt', null, ottawa, MTL)).toBe(-6)
+        expect(pointsForPlay('Punt', null, ottawa, OTT)).toBe(6)
+    })
+
+    it('counts a touchdown under a flag unless the text nullifies it', () => {
+        const stood =
+            'Shotgun #10 D.Alexander pass complete short right to #6 T.Philpot caught at OTT-02, ' +
+            'for 4 yards to the OTT00 TOUCHDOWN, clock 00:00 PENALTY MTL Unnecessary roughness ' +
+            '(#66 P.Lestage) 10 yards from OTT00 to OTT25'
+        const nullified =
+            'Shotgun #10 D.Alexander pass complete deep middle to #85 T.Snead caught at OTT01, ' +
+            'for 21 yards to the OTT00 TOUCHDOWN nullified by penalty, clock 14:45 PENALTY MTL ' +
+            'Offside (#85 T.Snead) 5 yards from OTT21 to OTT26. NO PLAY'
+        expect(pointsForPlay('Pass', 'Penalty', stood, MTL)).toBe(6)
+        expect(pointsForPlay('Pass', 'Penalty', stood)).toBe(6)
+        expect(pointsForPlay('Pass', 'Penalty', nullified, MTL)).toBeNull()
+        expect(pointsForPlay('Pass', 'Penalty', nullified)).toBeNull()
+    })
+
+    it('falls back to the row when it has no team to compare against', () => {
+        expect(pointsForPlay('Pass', 'Touchdown', pickSix)).toBe(6)
+    })
+})
+
 describe('pointsForPlay — return touchdowns the feed does not mark', () => {
     // 45 of these in the 2023/24 corpus, every one worth nothing before this.
     // The feed leaves subType null (or "Failed" on a missed field goal), so the
@@ -121,23 +174,26 @@ describe('pointsForPlay — return touchdowns the feed does not mark', () => {
         )
     })
 
-    it('leaves penalty plays alone rather than guessing', () => {
-        // 53 plays in the corpus carry subType "Penalty" and the word TOUCHDOWN,
-        // and the description does not reliably say whether it stood. Missing a
-        // score is recoverable; inventing one poisons the label.
-        expect(
+    it('counts a touchdown under a flag only when the text does not nullify it', () => {
+        // 53 plays in the 2023/24 corpus carry subType "Penalty" and the word
+        // TOUCHDOWN. The ones that did not count say so ("nullified by penalty",
+        // "NO PLAY"); the rest are roughness after the score, enforced on the
+        // kickoff. Checked against the scoreboard finals of the whole corpus.
+        const flagged = (tail: string) =>
             pointsForPlay(
                 'Pass',
                 'Penalty',
-                '#3 T.Thrower pass complete deep left to #8 R.Receiver return 40 yards to the ' +
-                    'CGY00 TOUCHDOWN PENALTY HAM Hold',
-            ),
-        ).toBeNull()
+                '#3 T.Thrower pass complete deep left to #8 R.Receiver for 40 yards to the ' +
+                    `CGY00 TOUCHDOWN${tail}`,
+            )
+        expect(flagged(' PENALTY HAM Objectionable conduct 10 yards from CGY00 to CGY25')).toBe(6)
+        expect(flagged(' nullified by penalty PENALTY HAM Hold. NO PLAY')).toBeNull()
     })
 
-    it('does not disturb an interception returned for a touchdown', () => {
-        // The feed DOES mark these, and stamps them with the scoring team's own
-        // id — so they are a plain +6 on that team's row, not a negative.
+    it('takes a marked interception touchdown at face value without a team', () => {
+        // The feed marks these, but is NOT consistent about whose id it stamps
+        // on the row — see the goal-line tests above. With no team to compare
+        // against, the row is trusted as it stands.
         expect(
             pointsForPlay(
                 'Pass',

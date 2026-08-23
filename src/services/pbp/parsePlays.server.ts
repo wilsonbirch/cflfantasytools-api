@@ -40,6 +40,10 @@ type MatchInfo = {
     awayTeam?: { competitorId?: string }
 }
 
+// The official final, when the payload carries one. The 2023/24 payloads all
+// do; a preseason capture may not.
+type ScoreboardInfo = { homeScore?: unknown; awayScore?: unknown }
+
 export type ParseSummary = {
     gameId: number
     drives: number
@@ -66,12 +70,18 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
 
     let raw: RawPlay[]
     let matchInfo: MatchInfo | undefined
+    let scoreboard: ScoreboardInfo | undefined
     try {
         const payload = JSON.parse(game.response) as {
-            data?: { matchInfo?: MatchInfo; playByPlayInfo?: { ALL?: RawPlay[] } }
+            data?: {
+                matchInfo?: MatchInfo
+                scoreboardInfo?: ScoreboardInfo
+                playByPlayInfo?: { ALL?: RawPlay[] }
+            }
         }
         raw = payload.data?.playByPlayInfo?.ALL ?? []
         matchInfo = payload.data?.matchInfo
+        scoreboard = payload.data?.scoreboardInfo
     } catch {
         throw new Error(`game ${gameId}: response is not valid JSON`)
     }
@@ -84,10 +94,12 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
     // team is not in our table still parses; its yard line keeps magnitude only.
     const teams = await db.team.findMany({ where: { geniusTeamId: { not: null } } })
     const abbrByGeniusId = new Map(teams.map((t) => [t.geniusTeamId as string, t.abbreviation]))
+    const teamById = new Map(teams.map((t) => [t.geniusTeamId as string, t]))
+    const teamOf = (id: string) => teamById.get(id)
 
     const drives = groupIntoDrives(chronological(raw))
-    const outcomes = drives.map(driveOutcome)
-    const nextPoints = nextPointOutcomes(drives)
+    const outcomes = drives.map((d) => driveOutcome(d, teamOf))
+    const nextPoints = nextPointOutcomes(drives, teamOf)
 
     // Only drives whose team we can resolve: Drive.geniusTeamId is a foreign key
     // onto Team, so an unknown club would fail the insert and take the game with
@@ -128,6 +140,7 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
                         play.type,
                         play.subType,
                         fieldLength,
+                        teamOf(play.teamId),
                     )
                     const position = parseStartPosition(play.playStartPosition, abbr)
                     return {
@@ -162,6 +175,8 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
         const startedAt = matchInfo?.scheduledStartTime
             ? new Date(matchInfo.scheduledStartTime)
             : null
+        const finalScore = (v: unknown): number | null =>
+            typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null
         await tx.game.update({
             where: { id: gameId },
             data: {
@@ -171,6 +186,9 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
                 homeGeniusTeamId: knownOrNull(matchInfo?.homeTeam?.competitorId),
                 awayGeniusTeamId: knownOrNull(matchInfo?.awayTeam?.competitorId),
                 startedAt: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt : null,
+                // The feed's own final beats anything summed from plays.
+                homeScore: finalScore(scoreboard?.homeScore),
+                awayScore: finalScore(scoreboard?.awayScore),
             },
         })
         // md5 computed by Postgres, not Node: the candidate query below compares
