@@ -113,6 +113,7 @@ model Team {
   awayMatches     Match[]                    @relation("AwayMatches")
   homeGames       Game[]                     @relation("GameHome")
   awayGames       Game[]                     @relation("GameAway")
+  coachingStaff   CoachingStaff[]
 }
 
 // Scraper configuration as DATA, editable from the admin surface. In 3DF this
@@ -158,6 +159,37 @@ model NotificationSubscription {
 
   @@unique([accountId, teamId])
   @@index([teamId, enabled])
+}
+
+// ---------------------------------------------------------------------------
+// Coaching staff
+// ---------------------------------------------------------------------------
+
+enum CoachingRole {
+  HC
+  OC
+  DC
+}
+
+// Head coach and coordinators over time. HAND DATA — no feed carries it — so
+// seeded from src/data/coachingStaff.ts (sources per row) and edited from the
+// admin surface. The natural key is (team, role, person, effectiveFrom) —
+// person included because co-coordinators exist (Toronto ran two DCs in 2024
+// and 2025); effectiveTo null means current. A mid-season change is two rows.
+model CoachingStaff {
+  id            Int          @id @default(autoincrement())
+  teamId        Int
+  role          CoachingRole
+  person        String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, role, person, effectiveFrom])
+  @@index([teamId, effectiveFrom])
 }
 
 // ---------------------------------------------------------------------------

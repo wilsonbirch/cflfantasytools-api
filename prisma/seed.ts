@@ -1,6 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client'
 import { TEAMS } from '../src/data/teams'
+import { seedCoachingStaff } from './seedCoachingStaff'
 
 // Idempotent: upserts by the natural key (slug for teams, teamId+kind for
 // sources), so re-running after a schema change or a URL fix is safe.
@@ -52,9 +53,13 @@ async function main(): Promise<void> {
         })
     }
 
+    const staff = await seedCoachingStaff(prisma)
+
     const teams = await prisma.team.count()
     const sources = await prisma.teamSource.count()
-    console.log(`Seeded ${teams} teams, ${sources} depth-chart sources`)
+    console.log(
+        `Seeded ${teams} teams, ${sources} depth-chart sources, ${staff} coaching staff rows`,
+    )
 }
 
 main()

@@ -4,7 +4,7 @@ import { builder } from '~/builder'
 import { jobEnqueue } from '~/dao/job.server'
 import { db } from '~/lib/db.server'
 import { requireAdmin } from '~/lib/guards.server'
-import { JobStatusEnum, ScrapeStatusEnum } from '~/schemas/enums.server'
+import { CoachingRoleEnum, JobStatusEnum, ScrapeStatusEnum } from '~/schemas/enums.server'
 import { isStrategy, STRATEGIES } from '~/services/depthCharts/scrape/extractors'
 import { JOB_HANDLERS } from '~/worker/handlers.server'
 import type { Prisma } from '~/generated/prisma/client'
@@ -79,6 +79,28 @@ const TeamSourceInput = builder.inputType('TeamSourceInput', {
     }),
 })
 
+const CoachingStaffInput = builder.inputType('CoachingStaffInput', {
+    fields: (t) => ({
+        teamSlug: t.string({ required: true }),
+        role: t.field({ type: CoachingRoleEnum, required: true }),
+        person: t.string({ required: true }),
+        effectiveFrom: t.field({ type: 'DateTime', required: true }),
+        effectiveTo: t.field({ type: 'DateTime' }),
+    }),
+})
+
+const coachingStaffInput = z
+    .object({
+        teamSlug: z.string().min(1),
+        role: z.enum(['HC', 'OC', 'DC']),
+        person: z.string().trim().min(2).max(100),
+        effectiveFrom: z.date(),
+        effectiveTo: z.date().nullable(),
+    })
+    .refine((v) => v.effectiveTo === null || v.effectiveTo > v.effectiveFrom, {
+        message: 'effectiveTo must be after effectiveFrom',
+    })
+
 // What an admin may write. The scrape job runs this config against a club's
 // site, so a bad value here is a silent outage — validate at the boundary.
 const teamSourcePatch = z.object({
@@ -136,6 +158,48 @@ builder.queryFields((t) => ({
 }))
 
 builder.mutationFields((t) => ({
+    upsertCoachingStaff: t.prismaField({
+        type: 'CoachingStaff',
+        description:
+            'Admin only. Upserts on (team, role, person, effectiveFrom); co-coordinators are two rows.',
+        args: { input: t.arg({ type: CoachingStaffInput, required: true }) },
+        resolve: async (query, _root, { input }, ctx) => {
+            requireAdmin(ctx)
+            const parsed = coachingStaffInput.safeParse({
+                ...input,
+                effectiveTo: input.effectiveTo ?? null,
+            })
+            if (!parsed.success) throw badInput(z.prettifyError(parsed.error))
+            const { teamSlug, role, person, effectiveFrom, effectiveTo } = parsed.data
+            const team = await db.team.findUnique({
+                where: { slug: teamSlug },
+                select: { id: true },
+            })
+            if (!team) throw badInput(`Unknown team "${teamSlug}"`)
+            return db.coachingStaff.upsert({
+                ...query,
+                where: {
+                    teamId_role_person_effectiveFrom: {
+                        teamId: team.id,
+                        role,
+                        person,
+                        effectiveFrom,
+                    },
+                },
+                update: { effectiveTo },
+                create: { teamId: team.id, role, person, effectiveFrom, effectiveTo },
+            })
+        },
+    }),
+    deleteCoachingStaff: t.boolean({
+        description: 'Admin only. Idempotent: deleting a missing row returns false.',
+        args: { id: t.arg.int({ required: true }) },
+        resolve: async (_root, { id }, ctx) => {
+            requireAdmin(ctx)
+            const { count } = await db.coachingStaff.deleteMany({ where: { id } })
+            return count === 1
+        },
+    }),
     updateTeamSource: t.prismaField({
         type: 'TeamSource',
         description: ADMIN,

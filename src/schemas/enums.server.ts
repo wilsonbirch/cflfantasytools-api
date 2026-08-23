@@ -1,5 +1,6 @@
 import { builder } from '~/builder'
 import {
+    CoachingRole,
     Role,
     ScrapeStatus,
     EmailStatus,
@@ -18,3 +19,4 @@ export const JobStatusEnum = builder.enumType(JobStatus, { name: 'JobStatus' })
 export const PassDepthEnum = builder.enumType(PassDepth, { name: 'PassDepth' })
 export const PassDirectionEnum = builder.enumType(PassDirection, { name: 'PassDirection' })
 export const RuleEraEnum = builder.enumType(RuleEra, { name: 'RuleEra' })
+export const CoachingRoleEnum = builder.enumType(CoachingRole, { name: 'CoachingRole' })

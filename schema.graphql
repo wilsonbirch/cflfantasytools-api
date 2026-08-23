@@ -17,6 +17,32 @@ type AuthPayload {
   refreshToken: String!
 }
 
+enum CoachingRole {
+  DC
+  HC
+  OC
+}
+
+"""One person in one role at one club. Hand-maintained; not in any feed."""
+type CoachingStaff {
+  effectiveFrom: DateTime!
+
+  """Null while current."""
+  effectiveTo: DateTime
+  id: Int!
+  person: String!
+  role: CoachingRole!
+  team: Team!
+}
+
+input CoachingStaffInput {
+  effectiveFrom: DateTime!
+  effectiveTo: DateTime
+  person: String!
+  role: CoachingRole!
+  teamSlug: String!
+}
+
 """
 A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
 """
@@ -140,6 +166,9 @@ enum JobStatus {
 }
 
 type Mutation {
+  """Admin only. Idempotent: deleting a missing row returns false."""
+  deleteCoachingStaff(id: Int!): Boolean!
+
   """Admin only. Unknown kinds are rejected with BAD_USER_INPUT."""
   enqueueJob(kind: String!, payload: JSON): Job!
 
@@ -166,6 +195,11 @@ type Mutation {
 
   """Admin only."""
   updateTeamSource(id: Int!, input: TeamSourceInput!): TeamSource!
+
+  """
+  Admin only. Upserts on (team, role, person, effectiveFrom); co-coordinators are two rows.
+  """
+  upsertCoachingStaff(input: CoachingStaffInput!): CoachingStaff!
 }
 
 type NotificationSubscription {
@@ -343,6 +377,11 @@ enum ScrapeStatus {
 type Team {
   abbreviation: String!
   city: String
+
+  """
+  Staff in post at any point during the season; every row when year is omitted.
+  """
+  coachingStaff(year: Int): [CoachingStaff!]!
   id: Int!
   isActive: Boolean!
   name: String!
