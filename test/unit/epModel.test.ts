@@ -4,6 +4,7 @@ import {
     distanceBucket,
     epaForPlays,
     EP_SOURCE_ERA,
+    epSourceEras,
     fitCells,
     yardLineBucket,
     type EpaPlay,
@@ -23,6 +24,17 @@ describe('EP_SOURCE_ERA', () => {
         // is a different axis and field-position value is not linear, so there
         // is no rescaling. No EPA beats a plausible wrong one.
         expect(EP_SOURCE_ERA.E2027).toBeNull()
+    })
+})
+
+describe('epSourceEras', () => {
+    it('tries the borrowed prior first, then the era itself', () => {
+        expect(epSourceEras('E2026')).toEqual(['PRE_2026', 'E2026'])
+        expect(epSourceEras('PRE_2026')).toEqual(['PRE_2026'])
+    })
+
+    it('lets 2027 be priced only from 2027 plays', () => {
+        expect(epSourceEras('E2027')).toEqual(['E2027'])
     })
 })
 

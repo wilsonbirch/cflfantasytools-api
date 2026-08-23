@@ -25,6 +25,15 @@ const fileName = 'services/pbp/parsePlays'
  */
 export const fieldLengthForEra = (era: RuleEra): number => (era === 'E2027' ? 100 : 110)
 
+/**
+ * Bump whenever the parser's OUTPUT changes — a new column, a corrected label,
+ * a different drive boundary. It is folded into `parsedHash`, so every stored
+ * game looks stale to the next scheduled pbp-parse and is re-parsed without an
+ * operator having to enqueue a forced run. History: v1 was the unversioned
+ * md5(response); v2 covers the signed drive points (#26) and fixture metadata (#29).
+ */
+export const PARSER_VERSION = 2
+
 type MatchInfo = {
     scheduledStartTime?: string
     homeTeam?: { competitorId?: string }
@@ -165,9 +174,11 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
             },
         })
         // md5 computed by Postgres, not Node: the candidate query below compares
-        // against md5("response") server-side, and a hash produced by two
+        // against the same expression server-side, and a hash produced by two
         // different implementations is a bug waiting to happen over encoding.
-        await tx.$executeRaw`UPDATE "Game" SET "parsedHash" = md5("response") WHERE id = ${gameId}`
+        // PARSER_VERSION is part of the hashed text, so a parser upgrade
+        // invalidates every stored hash at once.
+        await tx.$executeRaw`UPDATE "Game" SET "parsedHash" = md5(${String(PARSER_VERSION)} || "response") WHERE id = ${gameId}`
         return written
     })
 
@@ -186,7 +197,8 @@ export async function parseStoredGames(year?: number, force = false): Promise<Pa
     const summary: ParseAllSummary = { games: 0, drives: 0, plays: 0, failed: 0, skipped: 0 }
 
     // Staleness is a payload question, not a clock question: a game needs
-    // re-parsing when its `response` differs from the one it was parsed from.
+    // re-parsing when its `response` differs from the one it was parsed from,
+    // or when the parser has changed since (PARSER_VERSION).
     //
     // The comparison runs in SQL because the alternative — pulling every
     // `response` blob into Node to hash it — moves megabytes per run to answer
@@ -201,12 +213,12 @@ export async function parseStoredGames(year?: number, force = false): Promise<Pa
         : year === undefined
           ? await db.$queryRaw`
                 SELECT id FROM "Game"
-                WHERE "parsedHash" IS DISTINCT FROM md5("response")
+                WHERE "parsedHash" IS DISTINCT FROM md5(${String(PARSER_VERSION)} || "response")
                 ORDER BY id ASC`
           : await db.$queryRaw`
                 SELECT id FROM "Game"
                 WHERE year = ${year}
-                  AND "parsedHash" IS DISTINCT FROM md5("response")
+                  AND "parsedHash" IS DISTINCT FROM md5(${String(PARSER_VERSION)} || "response")
                 ORDER BY id ASC`
 
     for (const { id } of games) {

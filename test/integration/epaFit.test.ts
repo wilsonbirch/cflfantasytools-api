@@ -136,6 +136,20 @@ describe('applyEpa', () => {
         ).toBeGreaterThan(0)
     })
 
+    it('prices 2026 from its own surface when no 2023/24 fit exists', async () => {
+        await seedTeams()
+        // What production looked like after phase 1: a 2026-only database and no
+        // legacy corpus. Borrowing PRE_2026 finds nothing; the era's own drives
+        // must price it rather than leaving every play null.
+        await seedCorpus(12, 2026)
+        await fitEpModel('E2026')
+
+        const summary = await applyEpa()
+
+        expect(summary.skippedEra).toBe(0)
+        expect(summary.scored).toBeGreaterThan(0)
+    })
+
     it('refuses to price a 2027 game at all', async () => {
         await seedTeams()
         await seedCorpus()
@@ -183,16 +197,44 @@ describe('applyEpa', () => {
 })
 
 describe('refitAndApply', () => {
-    it('fits every era that is its own source, then prices everything', async () => {
+    it('fits every era that has plays, then prices everything', async () => {
         await seedTeams()
         await seedCorpus()
 
         const { fits, applied } = await refitAndApply()
 
-        // E2026 is priced FROM PRE_2026, so fitting a separate 2026 surface
-        // would build a table nothing reads.
         expect(fits.map((f) => f.era)).toEqual(['PRE_2026'])
         expect(applied.scored).toBeGreaterThan(0)
+    })
+
+    it('prices a 2026-only database instead of succeeding with nothing done', async () => {
+        await seedTeams()
+        await seedCorpus(12, 2026)
+
+        // The production failure: epa-fit "succeeded" on 2026-only data and
+        // every Play.epa stayed null, because only eras that were their own
+        // source were fitted and E2026's source was an unfitted PRE_2026.
+        const { fits, applied } = await refitAndApply()
+
+        expect(fits.map((f) => f.era)).toEqual(['E2026'])
+        expect(fits[0].rows).toBeGreaterThan(0)
+        expect(applied.skippedEra).toBe(0)
+        expect(applied.scored).toBeGreaterThan(0)
+        expect(await db.play.count({ where: { epa: { not: null } } })).toBe(applied.scored)
+    })
+
+    it('prefers the 2023/24 prior for 2026 once both surfaces exist', async () => {
+        await seedTeams()
+        await seedCorpus(12, 2024)
+        await seedParsedGame(2026)
+        await refitAndApply()
+
+        // Both fitted, and the 2026 game was priced off the larger PRE_2026
+        // surface — the one a single game could not have produced.
+        expect(await db.epValue.count({ where: { ruleEra: 'E2026' } })).toBeGreaterThan(0)
+        expect(
+            await db.play.count({ where: { gameId: FIXTURE_ID, epa: { not: null } } }),
+        ).toBeGreaterThan(0)
     })
 
     it('produces an expected-points curve that rises up the field', async () => {
