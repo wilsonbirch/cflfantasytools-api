@@ -236,6 +236,22 @@ describe('parseStoredGames', () => {
         expect(await db.play.count()).toBe(138)
     })
 
+    it('re-parses a game whose hash predates the current parser version', async () => {
+        await seedTeams()
+        await seedGame()
+        await parseStoredGames(2026)
+
+        // A row left by an older parser: the unversioned md5(response) that v1
+        // wrote, and the hash every production game carried before this shipped.
+        // No payload changed, no operator forced anything — the version bump
+        // alone must make it stale, or a parser fix never reaches stored games.
+        await db.$executeRaw`UPDATE "Game" SET "parsedHash" = md5("response") WHERE id = ${FIXTURE_ID}`
+
+        const upgraded = await parseStoredGames(2026)
+        expect(upgraded.games).toBe(1)
+        expect((await parseStoredGames(2026)).games).toBe(0)
+    })
+
     it('picks a game back up after its payload grows', async () => {
         await seedTeams()
         await seedGame(2026, truncatedTo(100))

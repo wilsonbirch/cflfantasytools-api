@@ -13,7 +13,7 @@ import { fieldLengthForEra } from '~/services/pbp/parsePlays.server'
 import {
     buildEpLookup,
     epaForPlays,
-    EP_SOURCE_ERA,
+    epSourceEras,
     fitCells,
     MIN_SAMPLE,
     type EpaPlay,
@@ -142,9 +142,10 @@ const halfOf = (phase: string, quarter: string): string => {
 /**
  * Write EPA onto every play of every parsed game.
  *
- * The surface an era is priced with is not always its own — 2026 borrows the
- * 2023/24 fit because the field did not change, while 2027 borrows nothing at
- * all and is skipped outright. See EP_SOURCE_ERA.
+ * The surface an era is priced with is not always its own — 2026 prefers the
+ * 2023/24 fit because the field did not change, falling back to its own; 2027
+ * borrows nothing and is skipped outright until 2027 plays have been fitted.
+ * See EP_SOURCE_ERA and epSourceEras.
  */
 export async function applyEpa(year?: number): Promise<ApplySummary> {
     const summary: ApplySummary = { games: 0, plays: 0, scored: 0, unpriced: 0, skippedEra: 0 }
@@ -153,18 +154,20 @@ export async function applyEpa(year?: number): Promise<ApplySummary> {
     const lookups = new Map<RuleEra, ReturnType<typeof buildEpLookup> | null>()
     const lookupFor = async (era: RuleEra) => {
         if (!lookups.has(era)) {
-            const source = EP_SOURCE_ERA[era]
-            if (source === null) {
-                lookups.set(era, null)
-            } else {
+            // First candidate surface that has actually been fitted: the borrowed
+            // prior if it exists, else the era's own. See epSourceEras.
+            let lookup: ReturnType<typeof buildEpLookup> | null = null
+            for (const source of epSourceEras(era)) {
                 const cells = await loadCells(source)
-                lookups.set(
-                    era,
-                    cells.length === 0
-                        ? null
-                        : buildEpLookup(cells, MIN_SAMPLE, fieldLengthForEra(era)),
+                if (cells.length === 0) continue
+                lookup = buildEpLookup(cells, MIN_SAMPLE, fieldLengthForEra(era))
+                logger.info(
+                    fileName,
+                    `pricing ${era} from the ${source} surface (${cells.length} cells)`,
                 )
+                break
             }
+            lookups.set(era, lookup)
         }
         return lookups.get(era) ?? null
     }
@@ -263,15 +266,23 @@ export async function refitAndApply(): Promise<{ fits: FitSummary[]; applied: Ap
     })
 
     const fits: FitSummary[] = []
-    // Only eras that are their OWN source are worth fitting: 2026 is priced from
-    // the 2023/24 surface, so fitting a separate 2026 surface would build a table
-    // nothing reads.
+    // Every era with plays gets its own surface. Whether it is READ is decided at
+    // pricing time (epSourceEras): 2026 prefers the 2023/24 prior, but a database
+    // holding only 2026 must still be able to price 2026.
     for (const { ruleEra } of eras) {
-        if (ruleEra !== null && EP_SOURCE_ERA[ruleEra] === ruleEra) {
-            fits.push(await fitEpModel(ruleEra))
-        }
+        if (ruleEra !== null) fits.push(await fitEpModel(ruleEra))
     }
 
     const applied = await applyEpa()
+
+    // The one line to read in the job log. A run that fitted nothing or priced
+    // nothing still "succeeds" — production ran that way for a day — so the
+    // no-op case is a warning, not an info line buried among the others.
+    const fitted = fits.map((f) => `${f.era}=${f.cells} cells/${f.rows} rows`).join(', ')
+    const line =
+        `epa-fit: fitted [${fitted || 'nothing'}], priced ${applied.scored} of ` +
+        `${applied.plays} plays across ${applied.games} game(s), ${applied.skippedEra} skipped`
+    if (applied.scored === 0) logger.warn(fileName, `${line} — NO PLAY WAS PRICED`)
+    else logger.info(fileName, line)
     return { fits, applied }
 }

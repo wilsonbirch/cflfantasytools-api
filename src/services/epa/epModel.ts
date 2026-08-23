@@ -34,6 +34,22 @@ export const EP_SOURCE_ERA: Record<RuleEra, RuleEra | null> = {
 }
 
 /**
+ * The surfaces allowed to price an era, in order of preference: the borrowed
+ * prior above if there is one, then the era's OWN fit.
+ *
+ * The own-era fallback is what makes a database holding only the current season
+ * price anything at all. Production ran 2026-only for a day with EP_SOURCE_ERA
+ * alone: nothing fitted PRE_2026, so nothing priced E2026, and every play's EPA
+ * stayed null while the job reported success. An era's own drives are never the
+ * wrong training set for it — a thin one is guarded by MIN_SAMPLE, not by
+ * refusing to fit.
+ */
+export function epSourceEras(era: RuleEra): RuleEra[] {
+    const prior = EP_SOURCE_ERA[era]
+    return prior === null || prior === era ? [era] : [prior, era]
+}
+
+/**
  * Smallest sample a cell may be read from directly.
  *
  * Below this the lookup pools into a coarser bin instead. A mean of nine plays
