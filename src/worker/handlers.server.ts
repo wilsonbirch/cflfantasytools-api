@@ -2,6 +2,7 @@ import { syncGameZone } from '~/services/gamezone/syncGameZone.server'
 import { capturePbp } from '~/services/pbp/capturePbp.server'
 import { parseStoredGames } from '~/services/pbp/parsePlays.server'
 import { refitAndApply } from '~/services/epa/fitEp.server'
+import { runProjectionsFit } from '~/services/projections/fitProjections.server'
 import { checkTeam, sweepAllTeams } from '~/services/depthCharts/checkTeam.server'
 import { currentSeasonYear } from '~/lib/season.server'
 
@@ -36,6 +37,13 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     // halves rebuild from stored rows so this is re-runnable at any time.
     'epa-fit': async () => {
         await refitAndApply()
+    },
+    // Refits the projection model from stored plays and writes this and next
+    // gameweek's projections under one fittedAt. Rebuilds from rows every run,
+    // so a model change is a refit and older fits stay on disk for audit.
+    'projections-fit': async (payload) => {
+        const { year } = asRecord(payload)
+        await runProjectionsFit(typeof year === 'number' ? year : currentSeasonYear())
     },
     // Fans out one job per club rather than scraping nine sites in one job, so
     // a single club's site being down cannot block or fail the other eight.

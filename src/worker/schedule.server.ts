@@ -40,6 +40,10 @@ export const SCHEDULES: ScheduleRule[] = [
     // it at all on a schedule is what keeps stored EPA consistent with the
     // stored surface as new games land.
     { kind: 'epa-fit', everyMs: 25 * HOUR_MS },
+    // Every six hours, so a chart posted or a game parsed during the week is in
+    // the projection within the day, and the lineup-lock window always has a
+    // fit under six hours old. Cheap: one pass over the era's plays.
+    { kind: 'projections-fit', everyMs: 6 * HOUR_MS },
     // Clubs post charts on their own schedule through the week, so a 30-minute
     // sweep is the difference between a same-day alert and a next-day one.
     // Only the sweep is scheduled; it enqueues the per-club jobs itself.

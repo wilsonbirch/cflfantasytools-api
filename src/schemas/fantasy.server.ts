@@ -1,19 +1,23 @@
 import { builder } from '~/builder'
-import type { Player } from '~/generated/prisma/client'
+import type { Player, Projection } from '~/generated/prisma/client'
 import { db } from '~/lib/db.server'
 import { currentSeasonYear } from '~/lib/season.server'
 import { PlayerPositionEnum } from '~/schemas/enums.server'
-import { currentGameweek, weekOf } from '~/services/gamezone/gameweeks.server'
+import { fantasyPoints } from '~/services/fantasy/scoring'
+import { currentGameweek, seasonGameweeks, weekOf } from '~/services/gamezone/gameweeks.server'
 
 // The fantasy companion's read surface over what gamezone-sync stores: the
 // schedule, the player pool with Game Zone's own salary/projection/points, and
-// each player's history. Our projections attach in schemas/projections.server.ts.
+// each player's history, with our projection for one gameweek attached.
 
-// What a FantasyPlayer row carries beyond the Player columns: which gameweek
-// the caller is looking at (for `projection`) and which completed gameweek is
-// the latest (for `lastGameweekPoints`), both resolved once per query rather
-// than once per player.
-export type FantasyPlayerRow = Player & { gameweekId: number | null; lastCompleteId: number | null }
+// What a FantasyPlayer row carries beyond the Player columns: our latest
+// projection for the gameweek the caller is looking at, and which completed
+// gameweek is the latest (for `lastGameweekPoints`) — both resolved once per
+// query rather than once per player.
+export type FantasyPlayerRow = Player & {
+    projection: Projection | null
+    lastCompleteId: number | null
+}
 
 async function latestCompleteGameweekId(year: number): Promise<number | null> {
     const g = await db.gameweek.findFirst({
@@ -24,6 +28,26 @@ async function latestCompleteGameweekId(year: number): Promise<number | null> {
     return g?.id ?? null
 }
 
+/** The newest fit's rows for a gameweek, optionally for some players only. */
+export async function latestProjections(
+    gameweekId: number,
+    playerIds?: number[],
+): Promise<Projection[]> {
+    const newest = await db.projection.findFirst({
+        where: { gameweekId },
+        orderBy: { fittedAt: 'desc' },
+        select: { fittedAt: true },
+    })
+    if (!newest) return []
+    return db.projection.findMany({
+        where: {
+            gameweekId,
+            fittedAt: newest.fittedAt,
+            ...(playerIds ? { playerId: { in: playerIds } } : {}),
+        },
+    })
+}
+
 /** Attach the per-query context a FantasyPlayer needs; gameweekId null = current. */
 export async function asFantasyPlayers(
     players: Player[],
@@ -32,8 +56,74 @@ export async function asFantasyPlayers(
     const year = currentSeasonYear()
     const gw = gameweekId ?? (await currentGameweek(year))?.id ?? null
     const lastCompleteId = await latestCompleteGameweekId(year)
-    return players.map((p) => Object.assign(p, { gameweekId: gw, lastCompleteId }))
+    const projections =
+        gw === null
+            ? []
+            : await latestProjections(
+                  gw,
+                  players.map((p) => p.id),
+              )
+    const byPlayer = new Map(projections.map((r) => [r.playerId, r]))
+    return players.map((p) =>
+        Object.assign(p, { projection: byPlayer.get(p.id) ?? null, lastCompleteId }),
+    )
 }
+
+const ProjectionType = builder.prismaObject('Projection', {
+    description:
+        'Projected production for one player in one gameweek: role baseline + player quality (shrunk toward the league mean by sample size) + offensive-coordinator offset + opposing defensive-coordinator offset, fitted on the current rule era only. Every number is a per-game expectation.',
+    fields: (t) => ({
+        id: t.exposeInt('id'),
+        fittedAt: t.expose('fittedAt', { type: 'DateTime' }),
+        gameweek: t.relation('Gameweek'),
+        player: t.prismaField({
+            type: 'Player',
+            select: { playerId: true, gameweekId: true },
+            resolve: async (q, r) => {
+                const p = await db.player.findUniqueOrThrow({ ...q, where: { id: r.playerId } })
+                return (await asFantasyPlayers([p], r.gameweekId))[0]
+            },
+        }),
+        opponent: t.prismaField({
+            type: 'Team',
+            nullable: true,
+            description: 'The opposing team; null when the fixture is not known.',
+            select: { opponentTeamId: true },
+            resolve: (q, r) =>
+                r.opponentTeamId === null
+                    ? null
+                    : db.team.findUnique({ ...q, where: { id: r.opponentTeamId } }),
+        }),
+        alignment: t.exposeString('alignment', {
+            nullable: true,
+            description:
+                'Receiver position (1S, 2WK, ...) the role baseline was taken from; null when no chart names the player.',
+        }),
+        games: t.exposeInt('games', {
+            description:
+                'Games behind the player term; the fewer, the more the projection is pooled.',
+        }),
+        passAttempts: t.exposeFloat('passAttempts'),
+        passingYards: t.exposeFloat('passingYards'),
+        passingTouchdowns: t.exposeFloat('passingTouchdowns'),
+        interceptions: t.exposeFloat('interceptions'),
+        rushAttempts: t.exposeFloat('rushAttempts'),
+        rushingYards: t.exposeFloat('rushingYards'),
+        rushingTouchdowns: t.exposeFloat('rushingTouchdowns'),
+        targets: t.exposeFloat('targets'),
+        receptions: t.exposeFloat('receptions'),
+        receivingYards: t.exposeFloat('receivingYards'),
+        receivingTouchdowns: t.exposeFloat('receivingTouchdowns'),
+        epa: t.exposeFloat('epa', {
+            description: 'Expected EPA of the plays the player throws, carries or is targeted on.',
+        }),
+        points: t.float({
+            description:
+                'Fantasy points under the current Game Zone scoring, computed at read time from the stat projections.',
+            resolve: (r) => fantasyPoints(r),
+        }),
+    }),
+})
 
 const LATEST_SNAPSHOT = {
     snapshots: { orderBy: [{ capturedAt: 'desc' }, { id: 'desc' }], take: 1 },
@@ -205,6 +295,24 @@ export const FantasyPlayerType = builder.prismaObject('Player', {
             },
             resolve: (p) => p.points,
         }),
+        projection: t.field({
+            type: ProjectionType,
+            nullable: true,
+            description:
+                'Our projection for the gameweek the query asked for; null when none has been fitted.',
+            resolve: (p) => (p as unknown as FantasyPlayerRow).projection,
+        }),
+        value: t.float({
+            nullable: true,
+            description: 'projection.points per $1000 of salary; null without both.',
+            select: LATEST_SNAPSHOT,
+            resolve: (p) => {
+                const { projection } = p as unknown as FantasyPlayerRow
+                const salary = p.snapshots[0]?.cost
+                if (!projection || !salary) return null
+                return Math.round((fantasyPoints(projection) / (salary / 1000)) * 100) / 100
+            },
+        }),
         salaryHistory: t.field({
             type: [SalarySnapshotType],
             description:
@@ -289,6 +397,35 @@ builder.queryFields((t) => ({
             const byId = new Map(rows.map((r) => [r.id, r]))
             const players = ids.map((id) => byId.get(id)).filter((r) => r !== undefined)
             return asFantasyPlayers(players, gameweekId)
+        },
+    }),
+    projections: t.prismaField({
+        type: ['Projection'],
+        description:
+            'The latest fitted projections for one gameweek (week is Gameweek.week), highest points first.',
+        args: {
+            year: t.arg.int({ required: true }),
+            week: t.arg.int({ required: true }),
+            teamSlug: t.arg.string(),
+        },
+        resolve: async (query, _root, { year, week, teamSlug }) => {
+            const gw = (await seasonGameweeks(year)).find((g) => g.week === week)
+            if (!gw) return []
+            const newest = await db.projection.findFirst({
+                where: { gameweekId: gw.id },
+                orderBy: { fittedAt: 'desc' },
+                select: { fittedAt: true },
+            })
+            if (!newest) return []
+            const rows = await db.projection.findMany({
+                ...query,
+                where: {
+                    gameweekId: gw.id,
+                    fittedAt: newest.fittedAt,
+                    ...(teamSlug ? { Player: { Team: { slug: teamSlug } } } : {}),
+                },
+            })
+            return rows.sort((a, b) => fantasyPoints(b) - fantasyPoints(a) || a.id - b.id)
         },
     }),
     fantasyPlayer: t.prismaField({
