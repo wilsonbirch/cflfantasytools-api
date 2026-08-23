@@ -177,7 +177,12 @@ describe('alignment over GraphQL', () => {
                 }[]
             }[]
             newest: { week: number; positions: { position: string; player: string }[] } | null
-            w11: { week: number; chart: { week: number }; team: { slug: string } } | null
+            w11: {
+                week: number
+                weeks: number[]
+                chart: { week: number }
+                team: { slug: string }
+            } | null
             none: unknown
         }>({
             query: `{
@@ -188,7 +193,7 @@ describe('alignment over GraphQL', () => {
                     week positions { position player }
                 }
                 w11: teamAlignment(teamSlug: "calgary-stampeders", year: 2026, week: 11) {
-                    week chart { week } team { slug }
+                    week weeks chart { week } team { slug }
                 }
                 none: teamAlignment(teamSlug: "calgary-stampeders", year: 2025) { week }
             }`,
@@ -206,6 +211,7 @@ describe('alignment over GraphQL', () => {
         expect(r.data!.newest?.positions.find((p) => p.position === '1WK')?.player).toBe('HATCHER')
         expect(r.data!.w11).toEqual({
             week: 11,
+            weeks: [11, 12],
             chart: { week: 11 },
             team: { slug: 'calgary-stampeders' },
         })

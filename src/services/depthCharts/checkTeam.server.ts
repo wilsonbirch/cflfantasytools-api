@@ -1,5 +1,6 @@
 import { db } from '~/lib/db.server'
 import { logger } from '~/lib/logger.server'
+import { currentGameweek } from '~/services/gamezone/gameweeks.server'
 import { getDepthChartInfo } from './season.server'
 import { archiveChartFiles } from './archiveFiles.server'
 import { diffSnapshot } from './diffSnapshot.server'
@@ -66,7 +67,12 @@ export async function checkTeam(
         return fail(verdict.reason, 'REJECTED')
     }
 
+    // Week comes from the Game Zone schedule when we have it — the gameweek
+    // lineups are being set for — and falls back to date math only for a season
+    // the feed has not given us yet. The hardcoded boundaries were wrong by a
+    // day in 2026 and drift every year.
     const info = getDepthChartInfo(new Date())
+    const week = (await currentGameweek(year))?.week ?? info.week
     const added = verdict.kind === 'first-snapshot' ? [] : verdict.diff.added
 
     await db.$transaction(async (tx) => {
@@ -84,7 +90,7 @@ export async function checkTeam(
                     value: item.href,
                     year,
                     season: info.season,
-                    week: info.week,
+                    week,
                 },
             })
         }

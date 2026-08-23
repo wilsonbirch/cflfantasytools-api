@@ -76,6 +76,18 @@ const TeamAlignmentType = builder.objectRef<TeamAlignmentRow>('TeamAlignment').i
     fields: (t) => ({
         year: t.exposeInt('year'),
         week: t.exposeInt('week'),
+        weeks: t.intList({
+            description: 'Every week of the season with a chart that parsed OK, ascending.',
+            resolve: async (r) => {
+                const rows = await db.depthChart.findMany({
+                    where: { teamId: r.teamId, year: r.year, parseStatus: 'OK' },
+                    distinct: ['week'],
+                    select: { week: true },
+                    orderBy: { week: 'asc' },
+                })
+                return rows.map((c) => c.week)
+            },
+        }),
         team: t.prismaField({
             type: 'Team',
             resolve: (q, r) => db.team.findUniqueOrThrow({ ...q, where: { id: r.teamId } }),
