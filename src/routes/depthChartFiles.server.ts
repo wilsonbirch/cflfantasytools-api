@@ -36,6 +36,8 @@ export async function handleDepthChartFile(id: number, res: ServerResponse): Pro
             'content-length': file.size,
             'cache-control': 'public, max-age=31536000, immutable',
             etag: `"${file.sha256}"`,
+            // Public, read-only bytes: web and native fetch() them cross-origin.
+            'access-control-allow-origin': '*',
             'content-disposition': `inline; filename="depth-chart-${id}.pdf"`,
         })
         res.end(Buffer.from(file.bytes))

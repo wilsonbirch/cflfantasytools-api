@@ -253,6 +253,7 @@ describe('DepthChart.files over GraphQL and the REST route', () => {
         expect(ok.headers.get('content-type')).toBe('application/pdf')
         expect(ok.headers.get('cache-control')).toContain('immutable')
         expect(ok.headers.get('etag')).toBe(`"${sha(PDF_A)}"`)
+        expect(ok.headers.get('access-control-allow-origin')).toBe('*')
         expect(Buffer.from(await ok.arrayBuffer()).equals(PDF_A)).toBe(true)
 
         const missing = await fetch(`http://127.0.0.1:${port}/depth-charts/files/999999.pdf`)
