@@ -26,6 +26,9 @@ scalar DateTime
 type DepthChart {
   """When the scraper first saw the chart."""
   detectedAt: DateTime!
+
+  """Archived copies of the PDF, newest first; one per distinct checksum."""
+  files: [DepthChartFile!]!
   id: Int!
   publishedAt: DateTime!
   season: String!
@@ -34,6 +37,24 @@ type DepthChart {
   uuid: String!
   week: Int!
   year: Int!
+}
+
+"""
+An archived copy of a chart PDF. Bytes are served over REST, not GraphQL.
+"""
+type DepthChartFile {
+  contentType: String!
+  fetchedAt: DateTime!
+  id: Int!
+  sha256: String!
+
+  """Bytes."""
+  size: Int!
+
+  """
+  Absolute URL on this API that streams the file: GET /depth-charts/files/{id}.pdf
+  """
+  url: String!
 }
 
 """A team's depth charts for one season, newest chart first."""
@@ -305,6 +326,9 @@ type ScrapeRun {
   finishedAt: DateTime
   id: Int!
   itemCount: Int
+
+  """Charts whose PDF changed under an unchanged link this run."""
+  revisedCount: Int
   startedAt: DateTime!
   status: ScrapeStatus!
   team: Team!

@@ -198,10 +198,33 @@ model DepthChart {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  Team           Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  DepthChartList DepthChartList @relation(fields: [depthChartListId], references: [id], onDelete: Cascade)
+  Team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  DepthChartList DepthChartList   @relation(fields: [depthChartListId], references: [id], onDelete: Cascade)
+  files          DepthChartFile[]
 
   @@index([teamId, year])
+}
+
+// An archived copy of a chart PDF. One row per DISTINCT checksum per chart, so
+// a club silently replacing the file at the same URL is recorded as a new
+// version rather than overwriting the old — that replacement was invisible when
+// change detection compared hrefs alone. ~40MB a season; Postgres is fine.
+model DepthChartFile {
+  id           Int      @id @default(autoincrement())
+  depthChartId Int
+  sha256       String
+  bytes        Bytes
+  size         Int
+  contentType  String
+  fetchedAt    DateTime @default(now())
+  // Last time the URL was re-fetched and still served these bytes. Drives the
+  // re-check cadence so a club site is not hit on every half-hour sweep.
+  checkedAt    DateTime @default(now())
+
+  DepthChart DepthChart @relation(fields: [depthChartId], references: [id], onDelete: Cascade)
+
+  @@unique([depthChartId, sha256])
+  @@index([depthChartId, fetchedAt])
 }
 
 enum ScrapeStatus {
@@ -213,14 +236,16 @@ enum ScrapeStatus {
 // One row per scrape attempt — the data behind the admin "scraper health" panel,
 // and the audit trail for the sanity gate that refuses an empty or collapsed result.
 model ScrapeRun {
-  id         Int          @id @default(autoincrement())
-  teamId     Int
-  status     ScrapeStatus
-  itemCount  Int?
-  addedCount Int?
-  error      String?
-  startedAt  DateTime     @default(now())
-  finishedAt DateTime?
+  id           Int          @id @default(autoincrement())
+  teamId       Int
+  status       ScrapeStatus
+  itemCount    Int?
+  addedCount   Int?
+  // Charts whose PDF changed under an unchanged href this run.
+  revisedCount Int?
+  error        String?
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
 
   Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 

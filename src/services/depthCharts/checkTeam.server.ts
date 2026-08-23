@@ -1,6 +1,7 @@
 import { db } from '~/lib/db.server'
 import { logger } from '~/lib/logger.server'
 import { getDepthChartInfo } from './season.server'
+import { archiveChartFiles } from './archiveFiles.server'
 import { diffSnapshot } from './diffSnapshot.server'
 import { extract, isStrategy, type DepthChartItem } from './scrape/extractors'
 import { fetchPage } from './scrape/fetchPage.server'
@@ -12,6 +13,8 @@ export type CheckResult = {
     status: 'OK' | 'FAILED' | 'REJECTED'
     itemCount: number
     addedCount: number
+    /** Charts whose PDF changed under an unchanged href. */
+    revisedCount: number
     error?: string
 }
 
@@ -37,7 +40,7 @@ export async function checkTeam(
             data: { status, error, finishedAt: new Date() },
         })
         logger.warn(fileName, `team ${teamId}: ${status} — ${error}`)
-        return { teamId, status, itemCount: 0, addedCount: 0, error }
+        return { teamId, status, itemCount: 0, addedCount: 0, revisedCount: 0, error }
     }
 
     const source = await db.teamSource.findFirst({ where: { teamId, kind: 'depth-chart' } })
@@ -86,21 +89,34 @@ export async function checkTeam(
         }
     })
 
+    // After the snapshot is safely stored: archive the PDFs of anything new and
+    // re-check the newest few for an in-place replacement. Its own failures are
+    // logged inside and never fail the scrape.
+    const files = await archiveChartFiles(teamId, year, fetchImpl)
+
     await db.scrapeRun.update({
         where: { id: run.id },
         data: {
             status: 'OK',
             itemCount: items.length,
             addedCount: added.length,
+            revisedCount: files.revised,
             finishedAt: new Date(),
         },
     })
 
     logger.info(
         fileName,
-        `team ${teamId}: ${verdict.kind}, ${items.length} items, ${added.length} new`,
+        `team ${teamId}: ${verdict.kind}, ${items.length} items, ${added.length} new, ` +
+            `${files.archived} archived, ${files.revised} revised, ${files.failed} fetch failures`,
     )
-    return { teamId, status: 'OK', itemCount: items.length, addedCount: added.length }
+    return {
+        teamId,
+        status: 'OK',
+        itemCount: items.length,
+        addedCount: added.length,
+        revisedCount: files.revised,
+    }
 }
 
 /** Fan out one job per enabled club so a single failing site cannot block the rest. */

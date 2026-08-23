@@ -14,8 +14,10 @@ const account = (role: 'USER' | 'ADMIN'): Account =>
         updatedAt: new Date(),
     }) as Account
 
-const ctx = (role?: 'USER' | 'ADMIN'): GraphQLContext =>
-    role ? { auth: { account: account(role), sessionUuid: 's-uuid' } } : { auth: null }
+const ctx = (role?: 'USER' | 'ADMIN'): GraphQLContext => ({
+    auth: role ? { account: account(role), sessionUuid: 's-uuid' } : null,
+    origin: 'http://test.local',
+})
 
 // This is the ONLY security boundary — web's /admin redirect and native's
 // hidden tab are UX. In 3DF the equivalent check did not exist at all, which is
