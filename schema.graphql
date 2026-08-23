@@ -147,6 +147,64 @@ enum EmailStatus {
   SENT
 }
 
+"""
+A Game Zone fantasy player with the salary, projection and points the feed carries, plus our own projection for one gameweek.
+"""
+type FantasyPlayer {
+  """Game Zone's average points per game played, as of the latest sync."""
+  avgPoints: Float
+  firstName: String!
+
+  """Game Zone's own id for the player."""
+  gameZoneId: Int!
+
+  """
+  Game Zone's own projection for the upcoming gameweek, as of the latest sync.
+  """
+  gameZoneProjection: Float
+  id: Int!
+
+  """Game Zone's injury note; null when there is none."""
+  injuredText: String
+
+  """
+  False once the player has been absent from several consecutive feed pulls.
+  """
+  isActive: Boolean!
+  isLocked: Boolean!
+
+  """
+  Points in the most recent completed gameweek; null when the player did not feature.
+  """
+  lastGameweekPoints: Float
+  lastName: String!
+
+  """First and last name."""
+  name: String!
+
+  """Every gameweek the player scored in, oldest first."""
+  pointsHistory: [GameweekPoints!]!
+  position: PlayerPosition!
+
+  """Game Zone salary as of the latest sync."""
+  salary: Int
+
+  """
+  One point per change in salary, oldest first, ending at the current value.
+  """
+  salaryHistory: [SalarySnapshot!]!
+
+  """Game Zone season total as of the latest sync."""
+  seasonPoints: Float
+
+  """Game Zone's availability status as the feed reports it."""
+  status: String
+  team: Team
+
+  """Salary change this week, as the feed reports it."""
+  weekSalaryChange: Int
+}
+
 """One fixture. Scores and stats are derived from plays at read time."""
 type Game {
   awayScore: Int
@@ -163,6 +221,29 @@ type Game {
   plays: [Play!]!
   ruleEra: RuleEra
   year: Int!
+}
+
+"""One Game Zone fantasy round and its fixtures."""
+type Gameweek {
+  endDate: DateTime
+  gameZoneId: Int!
+  id: Int!
+  matches: [Match!]!
+  name: String!
+  startDate: DateTime
+
+  """scheduled, playing or complete, as the feed reports it."""
+  status: String!
+
+  """1-based ordinal of the gameweek within its season, by start date."""
+  week: Int!
+  year: Int!
+}
+
+"""Fantasy points one player scored in one gameweek."""
+type GameweekPoints {
+  gameweek: Gameweek!
+  points: Float!
 }
 
 """
@@ -197,6 +278,23 @@ enum JobStatus {
   PENDING
   RUNNING
   SUCCEEDED
+}
+
+"""One fixture as Game Zone schedules it."""
+type Match {
+  awayScore: Int
+  awayTeam: Team
+  date: DateTime
+
+  """The parsed play-by-play for this fixture; null until captured."""
+  game: Game
+  gameZoneId: Int!
+  gameweek: Gameweek!
+  homeScore: Int
+  homeTeam: Team
+  id: Int!
+  status: String!
+  venue: String
 }
 
 type Mutation {
@@ -321,6 +419,13 @@ type PlayerGameStats {
   team: Team!
 }
 
+enum PlayerPosition {
+  OTHER
+  QUARTERBACK
+  RUNNING_BACK
+  WIDE_RECEIVER
+}
+
 """Per-player production over a season, from plays (no-plays excluded)."""
 type PlayerSeasonStats {
   completions: Int!
@@ -351,12 +456,30 @@ type PlayerSeasonStats {
 }
 
 type Query {
+  """
+  Staff in post at any point during the season, every club unless teamSlug is given; by team, role, effectiveFrom.
+  """
+  coachingStaff(teamSlug: String, year: Int!): [CoachingStaff!]!
   depthChartLists(teamSlug: String!, year: Int): [DepthChartList!]!
   depthChartYears(teamSlug: String!): [Int!]!
+
+  """
+  One player, with our projection for gameweekId (the current gameweek when omitted).
+  """
+  fantasyPlayer(gameweekId: Int, id: Int!): FantasyPlayer
+
+  """
+  Active players by salary, highest first. gameweekId selects which projection is attached; omitted means the current gameweek (the first not yet complete).
+  """
+  fantasyPlayers(gameweekId: Int, limit: Int = 100, offset: Int = 0, position: PlayerPosition, teamSlug: String): [FantasyPlayer!]!
   game(id: Int!): Game
 
   """Newest first. Only games with parsed plays."""
   games(limit: Int = 50, offset: Int = 0, teamSlug: String, year: Int!): [Game!]!
+  gameweek(id: Int!): Gameweek
+
+  """A season's gameweeks by start date."""
+  gameweeks(year: Int!): [Gameweek!]!
   isUp: Boolean!
 
   """Whether each scheduled job has run recently enough."""
@@ -402,6 +525,14 @@ enum RuleEra {
   PRE_2026
 }
 
+"""A player's salary as of one sync."""
+type SalarySnapshot {
+  capturedAt: DateTime!
+  gameZoneProjection: Float
+  salary: Int!
+  weekSalaryChange: Int
+}
+
 type ScrapeRun {
   addedCount: Int
   error: String
@@ -445,6 +576,9 @@ type TeamAlignment {
   positions: [DepthChartPosition!]!
   team: Team!
   week: Int!
+
+  """Every week of the season with a chart that parsed OK, ascending."""
+  weeks: [Int!]!
   year: Int!
 }
 

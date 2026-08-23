@@ -8,6 +8,7 @@ import {
     JobStatus,
     PassDepth,
     PassDirection,
+    PlayerPosition,
     RuleEra,
 } from '~/generated/prisma/client'
 
@@ -21,6 +22,7 @@ export const PassDepthEnum = builder.enumType(PassDepth, { name: 'PassDepth' })
 export const PassDirectionEnum = builder.enumType(PassDirection, { name: 'PassDirection' })
 export const RuleEraEnum = builder.enumType(RuleEra, { name: 'RuleEra' })
 export const CoachingRoleEnum = builder.enumType(CoachingRole, { name: 'CoachingRole' })
+export const PlayerPositionEnum = builder.enumType(PlayerPosition, { name: 'PlayerPosition' })
 export const DepthChartParseStatusEnum = builder.enumType(DepthChartParseStatus, {
     name: 'DepthChartParseStatus',
     description:

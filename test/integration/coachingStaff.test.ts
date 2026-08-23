@@ -64,6 +64,30 @@ describe('seedCoachingStaff', () => {
     })
 })
 
+describe('Query.coachingStaff', () => {
+    it('lists a season league-wide or for one club, by team then role', async () => {
+        await seedTeams()
+        await seedCoachingStaff(db)
+        const r = await executeOperation<{
+            all: { team: { slug: string }; role: string }[]
+            one: { team: { slug: string }; role: string; person: string }[]
+        }>({
+            query: `{
+                all: coachingStaff(year: 2026) { team { slug } role }
+                one: coachingStaff(year: 2026, teamSlug: "calgary-stampeders") { team { slug } role person }
+            }`,
+        })
+        expect(r.errors).toBeUndefined()
+        expect(new Set(r.data!.all.map((c) => c.team.slug)).size).toBe(TEAMS.length)
+        expect(r.data!.one.every((c) => c.team.slug === 'calgary-stampeders')).toBe(true)
+        // Enum order: HC, then OC, then DC.
+        const rank = (role: string) => ['HC', 'OC', 'DC'].indexOf(role)
+        const ranks = r.data!.one.map((c) => rank(c.role))
+        expect(ranks).toEqual([...ranks].sort((a, b) => a - b))
+        expect(r.data!.one.length).toBeGreaterThanOrEqual(3)
+    })
+})
+
 describe('Team.coachingStaff', () => {
     it('filters to staff in post at any point during the year', async () => {
         await seedTeams()

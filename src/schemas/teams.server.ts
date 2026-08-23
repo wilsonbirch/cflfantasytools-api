@@ -58,4 +58,16 @@ builder.queryFields((t) => ({
         args: { slug: t.arg.string({ required: true }) },
         resolve: (query, _root, { slug }) => db.team.findUnique({ ...query, where: { slug } }),
     }),
+    coachingStaff: t.prismaField({
+        type: ['CoachingStaff'],
+        description:
+            'Staff in post at any point during the season, every club unless teamSlug is given; by team, role, effectiveFrom.',
+        args: { year: t.arg.int({ required: true }), teamSlug: t.arg.string() },
+        resolve: (query, _root, { year, teamSlug }) =>
+            db.coachingStaff.findMany({
+                ...query,
+                where: { ...inPostDuring(year), ...(teamSlug ? { Team: { slug: teamSlug } } : {}) },
+                orderBy: [{ Team: { name: 'asc' } }, { role: 'asc' }, { effectiveFrom: 'asc' }],
+            }),
+    }),
 }))
