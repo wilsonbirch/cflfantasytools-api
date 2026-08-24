@@ -38,6 +38,7 @@ export const STAT_KEYS = [
     'receptions',
     'receivingYards',
     'receivingTouchdowns',
+    'fumblesLost',
     'epa',
 ] as const
 export type StatKey = (typeof STAT_KEYS)[number]
@@ -165,13 +166,17 @@ export function fitModel(observed: ObservedGame[], teamGames: TeamGame[]): Model
  * Project one player. Null when the role has no baseline at all (an era with
  * no games yet) — a projection must come from data, not from zeros.
  */
-export function project(model: Model, target: Target): { stats: StatLine; games: number } | null {
+export function project(
+    model: Model,
+    target: Target,
+    playerPrior: number = PLAYER_PRIOR_GAMES,
+): { stats: StatLine; games: number } | null {
     const baseline =
         model.roleMeans.get(target.role) ?? model.groupMeans.get(roleGroup(target.role))
     if (!baseline) return null
     const player = model.players.get(target.playerKey)
     const games = player?.games ?? 0
-    const w = games / (games + PLAYER_PRIOR_GAMES)
+    const w = games / (games + playerPrior)
     const oc = model.oc.get(target.ocKey)
     const dc = model.dc.get(target.dcKey)
     const stats = zeroLine()

@@ -577,6 +577,111 @@ describe('parseDescription — turnovers and penalties', () => {
     })
 })
 
+describe('parseDescription — fumbles', () => {
+    // Every description verbatim from the 2023/24 corpus. The team identity is
+    // the play's own team, as parsePlays passes it.
+    const HAM = { abbreviation: 'HAM', name: 'Hamilton Tiger-Cats' }
+    const TOR = { abbreviation: 'TOR', name: 'Toronto Argonauts' }
+    const BC = { abbreviation: 'BC', name: 'BC Lions' }
+
+    it('charges a sack-fumble recovered by the defence to the quarterback', () => {
+        const r = parseDescription(
+            'Shotgun #7 C.Fajardo sacked for loss of 3 yards to the HAM44 (#5 M.Carney), fumble by ' +
+                '#7 C.Fajardo recovered by MTL #51 K.Matte at HAM44 #51 K.Matte return 0 yards to ' +
+                'the HAM44 (#6 J.Thurman)',
+            'Sack',
+            null,
+            110,
+            HAM,
+        )
+        expect(r.fumbleLostBy).toBe('#7 C.Fajardo')
+        expect(r.isTurnover).toBe(true)
+    })
+
+    it('charges a lost rushing fumble to the rusher', () => {
+        const r = parseDescription(
+            'Shotgun #45 A.Ouellette rush middle for 5 yards gain to the EDM43 fumbled by ' +
+                '#45 A.Ouellette at EDM43 forced by #16 D.Bynum recovered by EDM #24 D.Bratton at ' +
+                'EDM43 #24 D.Bratton return 8 yards to the EDM51 (#7 T.Harris)',
+            'Run',
+            null,
+            110,
+            TOR,
+        )
+        expect(r.fumbleLostBy).toBe('#45 A.Ouellette')
+        expect(r.isTurnover).toBe(true)
+    })
+
+    it('flags a fumbled snap lost to the defence', () => {
+        const r = parseDescription(
+            'Shotgun #51 S.McEwen fumbled snap at BC48 for loss of 1 yard recovered by CGY ' +
+                '#26 D.Mills at BC48 advances 0 yards to the BC48 (#2 J.Woods)',
+            'Fumble',
+            null,
+            110,
+            BC,
+        )
+        expect(r.fumbleLostBy).toBe('#51 S.McEwen')
+        expect(r.isTurnover).toBe(true)
+    })
+
+    it('does NOT flag a fumbled snap the offence recovered itself', () => {
+        // The old subtype rule called every recovered Fumble-type play a
+        // turnover, including this one, where BC kept its own ball.
+        const r = parseDescription(
+            'Shotgun #3 V.Adams Jr. fumbled snap at BC37 for loss of 3 yards recovered by BC ' +
+                '#3 V.Adams Jr. at BC37 advances 0 yards to the BC37 #3 V.Adams Jr. sacked for ' +
+                'loss of 3 yards to the BC37 (#99 R.Holley)',
+            'Fumble',
+            null,
+            110,
+            BC,
+        )
+        expect(r.fumbleLostBy).toBeNull()
+        expect(r.isTurnover).toBe(false)
+    })
+
+    it('a returner who loses the ball is charged, but it is not a turnover for the kicking team', () => {
+        const r = parseDescription(
+            '#47 S.Small kickoff 59 yards to the WPG21 #80 J.Grant return 19 yards to the WPG40 ' +
+                'fumbled by #80 J.Grant at WPG40 forced by #15 K.Wilson recovered by HAM ' +
+                '#32 F.Sopik at WPG40 #32 F.Sopik return 38 yards to the WPG02 (#27 J.Augustine). ' +
+                '#16 J.Kelly injured on the play',
+            'Kickoff',
+            null,
+            110,
+            HAM,
+        )
+        expect(r.fumbleLostBy).toBe('#80 J.Grant')
+        expect(r.isTurnover).toBe(false)
+    })
+
+    it('a returner recovering their own muff loses nothing', () => {
+        const r = parseDescription(
+            '#31 N.Constantinou punt 38 yards to the WPG46 muffed by #13 L.Whitehead at WPG46 ' +
+                'recovered by WPG #13 L.Whitehead at WPG46 #13 L.Whitehead return 0 yards to ' +
+                'the WPG46 (#40 J.Tuck)',
+            'Punt',
+            null,
+            110,
+            HAM,
+        )
+        expect(r.fumbleLostBy).toBeNull()
+        expect(r.isTurnover).toBe(false)
+    })
+
+    it('keeps the old subtype rule when no team identity is given', () => {
+        const r = parseDescription(
+            'Shotgun #51 S.McEwen fumbled snap at BC48 for loss of 1 yard recovered by CGY ' +
+                '#26 D.Mills at BC48 advances 0 yards to the BC48 (#2 J.Woods)',
+            'Fumble',
+            null,
+        )
+        expect(r.fumbleLostBy).toBeNull()
+        expect(r.isTurnover).toBe(true)
+    })
+})
+
 describe('parseCatchPoint', () => {
     it('reads a completion catch point', () => {
         expect(parseCatchPoint('... caught at CGY38, for 13 yards')).toEqual({

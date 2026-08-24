@@ -65,6 +65,8 @@ export type ParsedDescription = {
     isComplete: boolean | null
     isFirstDown: boolean
     isTurnover: boolean
+    /** Who fumbled, kept only when their team LOST the ball. Play-text name. */
+    fumbleLostBy: string | null
     isNoPlay: boolean
     penaltyTeam: string | null
     penaltyName: string | null
@@ -159,6 +161,14 @@ const INTERCEPTED = new RegExp(String.raw`intercepted by\s+(${PLAYER})`)
 const RETURNER = new RegExp(String.raw`(${PLAYER})\s+return\b`)
 const RETURN_YARDS = /return (\d+) yards?/
 const RECOVERED_BY = new RegExp(String.raw`recovered by [A-Z]{2,4}\s+(${PLAYER})`)
+
+// "fumbled by #45 A.Ouellette", "fumble by #7 C.Fajardo" (sacks), "muffed by
+// #13 L.Whitehead" (punts), "#51 S.McEwen fumbled snap".
+const FUMBLED_BY = new RegExp(String.raw`(?:fumbled?|muffed) by\s+(${PLAYER})`)
+const FUMBLED_SNAP = new RegExp(String.raw`(${PLAYER}) fumbled snap`)
+// The recovering TEAM. Global: a ball fumbled twice is recovered twice, and the
+// last recovery is the one that decides possession.
+const RECOVERY_TEAM = /recovered by ([A-Z]{2,4})\s*#/g
 
 const PUNT_YARDS = /punt (\d+) yards?/
 const KICKOFF_YARDS = /kickoff (\d+) yards?/
@@ -336,14 +346,41 @@ export function parseDescription(
         }
     }
 
-    const returner = first(description, RETURNER) ?? first(description, RECOVERED_BY)
+    const rawReturner = first(description, RETURNER) ?? first(description, RECOVERED_BY)
+    const returner = isKick || subType === 'Interception' ? rawReturner : null
+
+    // Fumbles. The fumbler is charged only when their TEAM lost the ball, and
+    // the last recovery in the text is the one that decides possession. The
+    // fumbler is on the play's own team — except a returner (kick plays,
+    // interceptions), who is on the other side, so which recovery loses the
+    // ball flips. Without a team identity the loser is undecidable, and the
+    // old subtype rule is kept for isTurnover rather than guessing.
+    const fumbler = first(description, FUMBLED_SNAP) ?? first(description, FUMBLED_BY)
+    let fumbleLostBy: string | null = null
+    let fumbleTurnover = type === 'Fumble' && /recovered by/.test(description)
+    if (fumbler && ownTeam) {
+        const recoveries = [...description.matchAll(RECOVERY_TEAM)]
+        const lastTeam = recoveries[recoveries.length - 1]?.[1]
+        if (lastTeam === undefined) {
+            // No recovery in the text (out of bounds): the ball stays.
+            fumbleTurnover = false
+        } else {
+            const ownRecovered = isOwnGoalLine(lastTeam, ownTeam)
+            const fumblerIsReturner = fumbler === returner
+            const lost = fumblerIsReturner ? ownRecovered : !ownRecovered
+            if (lost) fumbleLostBy = fumbler
+            // A returner losing the ball is a takeaway FOR the play's team,
+            // not a turnover against it.
+            fumbleTurnover = lost && !fumblerIsReturner
+        }
+    }
 
     return {
         formation: first(description, FORMATION),
         passer: isPass || type === 'Sack' ? leadPlayer : null,
         rusher: type === 'Run' || type === 'Kneel' ? leadPlayer : null,
         receiver: isPass ? first(description, TARGET) : null,
-        returner: isKick || subType === 'Interception' ? returner : null,
+        returner,
         kicker: isKick ? leadPlayer : null,
         // On an interception the defensive "tackler" in parentheses is whoever
         // stopped the RETURN, so the interceptor is the meaningful defender.
@@ -381,9 +418,8 @@ export function parseDescription(
         isComplete: isPass ? /pass complete/.test(description) : null,
         isFirstDown: /1ST DOWN/.test(description),
         isTurnover:
-            subType === 'Interception' ||
-            /TURNOVER ON DOWNS/i.test(description) ||
-            (type === 'Fumble' && /recovered by/.test(description)),
+            subType === 'Interception' || /TURNOVER ON DOWNS/i.test(description) || fumbleTurnover,
+        fumbleLostBy,
         isNoPlay: penalty.isNoPlay,
         penaltyTeam: penalty.team,
         penaltyName: penalty.name,

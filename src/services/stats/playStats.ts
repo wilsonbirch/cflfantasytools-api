@@ -15,6 +15,8 @@ export const STAT_PLAY_SELECT = {
     passer: true,
     rusher: true,
     receiver: true,
+    returner: true,
+    fumbleLostBy: true,
     isComplete: true,
     isTurnover: true,
     isFirstDown: true,
@@ -67,6 +69,7 @@ export type PlayerLine = {
     receptions: number
     receivingYards: number
     receivingTouchdowns: number
+    fumblesLost: number
     // EPA of every play the player threw, carried or was targeted on.
     epa: number
     targetsByZone: ZoneTargets[]
@@ -163,6 +166,7 @@ export function playerLines(plays: StatPlay[]): PlayerLine[] {
                 receptions: 0,
                 receivingYards: 0,
                 receivingTouchdowns: 0,
+                fumblesLost: 0,
                 epa: 0,
                 targetsByZone: [],
             }
@@ -176,6 +180,13 @@ export function playerLines(plays: StatPlay[]): PlayerLine[] {
         const td = p.points === 6
         const yards = p.yardsGained ?? 0
         const epa = p.epa ?? 0
+        // A returner who loses the ball is on the OTHER team, and return stats
+        // are not tracked here — only scrimmage fumbles land on a line.
+        if (p.fumbleLostBy && p.fumbleLostBy !== p.returner) {
+            const l = get(p.fumbleLostBy, p.geniusTeamId)
+            l.gameIds.add(p.gameId)
+            l.fumblesLost += 1
+        }
         if (p.type === 'Pass' && p.passer) {
             const l = get(p.passer, p.geniusTeamId)
             l.gameIds.add(p.gameId)

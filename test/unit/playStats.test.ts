@@ -12,6 +12,8 @@ const play = (over: Partial<StatPlay>): StatPlay => ({
     passer: null,
     rusher: null,
     receiver: null,
+    returner: null,
+    fumbleLostBy: null,
     isComplete: null,
     isTurnover: false,
     isFirstDown: false,
@@ -142,6 +144,21 @@ describe('playerLines', () => {
 
     it('orders by involvement, then name', () => {
         expect(playerLines(plays).map((l) => l.player)).toEqual([qb, rb, wr, '#1 Z.Back'])
+    })
+
+    it('counts a scrimmage fumble lost but never a returner fumble', () => {
+        const lines = playerLines([
+            // A sack-fumble: no pass attempt, only the lost ball.
+            play({ type: 'Sack', passer: qb, fumbleLostBy: qb, isTurnover: true }),
+            play({ type: 'Run', rusher: rb, yardsGained: 5, fumbleLostBy: rb, isTurnover: true }),
+            // The opposing returner losing a punt is not a line stat here.
+            play({ type: 'Punt', returner: '#2 M.Alford', fumbleLostBy: '#2 M.Alford' }),
+        ])
+        const byName = Object.fromEntries(lines.map((l) => [l.player, l]))
+        expect(byName[qb].fumblesLost).toBe(1)
+        expect(byName[qb].passAttempts).toBe(0)
+        expect(byName[rb].fumblesLost).toBe(1)
+        expect(byName['#2 M.Alford']).toBeUndefined()
     })
 
     it('keeps the same name on two teams apart and counts distinct games', () => {
