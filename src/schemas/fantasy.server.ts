@@ -114,6 +114,7 @@ const ProjectionType = builder.prismaObject('Projection', {
         receptions: t.exposeFloat('receptions'),
         receivingYards: t.exposeFloat('receivingYards'),
         receivingTouchdowns: t.exposeFloat('receivingTouchdowns'),
+        fumblesLost: t.exposeFloat('fumblesLost'),
         epa: t.exposeFloat('epa', {
             description: 'Expected EPA of the plays the player throws, carries or is targeted on.',
         }),

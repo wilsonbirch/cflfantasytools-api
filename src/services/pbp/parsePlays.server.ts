@@ -30,9 +30,10 @@ export const fieldLengthForEra = (era: RuleEra): number => (era === 'E2027' ? 10
  * a different drive boundary. It is folded into `parsedHash`, so every stored
  * game looks stale to the next scheduled pbp-parse and is re-parsed without an
  * operator having to enqueue a forced run. History: v1 was the unversioned
- * md5(response); v2 covers the signed drive points (#26) and fixture metadata (#29).
+ * md5(response); v2 covers the signed drive points (#26) and fixture metadata (#29);
+ * v3 adds lost fumbles (`Play.fumbleLostBy`) and the corrected fumble turnovers.
  */
-export const PARSER_VERSION = 2
+export const PARSER_VERSION = 3
 
 type MatchInfo = {
     scheduledStartTime?: string

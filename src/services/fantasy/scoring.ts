@@ -14,6 +14,12 @@
 // the remainder are quarterbacks a few points high (an unmodelled negative
 // term, most likely fumbles lost) and returners (return yards). Re-verify
 // each season the same way — the feed is the authority, not this file.
+//
+// The official "How to Play" rules (provided by Wilson 2026-08-24, archived in
+// docs/cfl-fantasy-rules.md in the parent repo) confirm fumbles lost at -2,
+// receptions at 1 and interceptions at -2, and price return yards at 1 per 20
+// — the return-yards term is still unmodelled here because return yardage is
+// not tracked per player.
 
 export type ScoringLine = {
     passingYards: number
@@ -24,6 +30,7 @@ export type ScoringLine = {
     receptions: number
     receivingYards: number
     receivingTouchdowns: number
+    fumblesLost?: number
     twoPointConversions?: number
     returnTouchdowns?: number
 }
@@ -37,6 +44,7 @@ export const SCORING = {
     reception: 1,
     receivingYardsPerPoint: 10,
     receivingTouchdown: 6,
+    fumbleLost: -2,
     twoPointConversion: 2,
     returnTouchdown: 6,
 } as const
@@ -52,6 +60,7 @@ export function fantasyPoints(s: ScoringLine): number {
         s.receptions * SCORING.reception +
         s.receivingYards / SCORING.receivingYardsPerPoint +
         s.receivingTouchdowns * SCORING.receivingTouchdown +
+        (s.fumblesLost ?? 0) * SCORING.fumbleLost +
         (s.twoPointConversions ?? 0) * SCORING.twoPointConversion +
         (s.returnTouchdowns ?? 0) * SCORING.returnTouchdown
     return Math.round(pts * 10) / 10

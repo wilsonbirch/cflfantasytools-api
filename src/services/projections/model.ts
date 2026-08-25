@@ -38,6 +38,7 @@ export const STAT_KEYS = [
     'receptions',
     'receivingYards',
     'receivingTouchdowns',
+    'fumblesLost',
     'epa',
 ] as const
 export type StatKey = (typeof STAT_KEYS)[number]
@@ -69,13 +70,14 @@ export type Target = {
 }
 
 // Prior weights, in games. A player term is half-trusted after one game; a
-// coordinator offset after six. Set on a 2026 hold-out (weeks 9-11, fitted on
-// the weeks before each): player priors of 4, 2 and 1 gave MAE 5.95, 5.71 and
-// 5.50 fantasy points against 5.40 for a plain season-average — the shrinkage
-// mostly pulls established starters toward a role mean diluted by backups, so
-// less of it is better until roles separate starters out. The coordinator
-// offsets are worth about 0.1 (5.50 with, 5.62 without). Revisit with more
-// seasons.
+// coordinator offset after six. Re-tuned 2026-08-24 on the same 2026 hold-out
+// (weeks 9-11, fitted on the weeks before each, scripts/evalProjections.ts)
+// after QB/RB baselines split starters from backups: priors of 1, 2, 3 and 4
+// gave MAE 5.31, 5.42, 5.49 and 5.54 against 5.42 for a plain season-average.
+// The split itself was worth ~0.2 (5.50 -> 5.31 at prior 1) and is what put
+// the model AHEAD of the season-average baseline for the first time. The
+// coordinator offsets were worth about 0.1 when last isolated. Revisit with
+// more seasons.
 export const PLAYER_PRIOR_GAMES = 1
 export const COORD_PRIOR_GAMES = 6
 
@@ -165,13 +167,17 @@ export function fitModel(observed: ObservedGame[], teamGames: TeamGame[]): Model
  * Project one player. Null when the role has no baseline at all (an era with
  * no games yet) — a projection must come from data, not from zeros.
  */
-export function project(model: Model, target: Target): { stats: StatLine; games: number } | null {
+export function project(
+    model: Model,
+    target: Target,
+    playerPrior: number = PLAYER_PRIOR_GAMES,
+): { stats: StatLine; games: number } | null {
     const baseline =
         model.roleMeans.get(target.role) ?? model.groupMeans.get(roleGroup(target.role))
     if (!baseline) return null
     const player = model.players.get(target.playerKey)
     const games = player?.games ?? 0
-    const w = games / (games + PLAYER_PRIOR_GAMES)
+    const w = games / (games + playerPrior)
     const oc = model.oc.get(target.ocKey)
     const dc = model.dc.get(target.dcKey)
     const stats = zeroLine()
