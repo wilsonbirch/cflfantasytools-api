@@ -63,4 +63,21 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
         // is the data-quality guard refusing a parse, not a site being down.
         if (result.status === 'FAILED') throw new Error(`team ${teamId}: ${result.error}`)
     },
+    // Emails the club's subscribers about a new or replaced depth chart. Its
+    // own job so a Resend outage retries without re-scraping; the batchKey
+    // (teamId + scrapeRunId) makes retries resume, never double-send.
+    'chart-alert': async (payload) => {
+        const { teamId, scrapeRunId, added, revised } = asRecord(payload)
+        if (typeof teamId !== 'number' || typeof scrapeRunId !== 'number') {
+            throw new Error('chart-alert requires teamId and scrapeRunId')
+        }
+        const { sendChartAlert } = await import('~/services/email/chartAlert.server')
+        const result = await sendChartAlert(
+            teamId,
+            scrapeRunId,
+            typeof added === 'number' ? added : 0,
+            typeof revised === 'number' ? revised : 0,
+        )
+        if (result.failed > 0) throw new Error(`${result.failed} of ${result.queued} sends failed`)
+    },
 }

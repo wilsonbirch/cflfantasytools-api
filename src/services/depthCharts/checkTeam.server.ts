@@ -115,6 +115,19 @@ export async function checkTeam(
         },
     })
 
+    // Something a subscriber cares about happened: fan the alert out as its own
+    // job so a Resend outage retries without re-scraping, keyed by this run so
+    // a retry cannot double-send. A first snapshot is a backfill, not news.
+    if (verdict.kind !== 'first-snapshot' && (added.length > 0 || files.revised > 0)) {
+        const { jobEnqueue } = await import('~/dao/job.server')
+        await jobEnqueue('chart-alert', {
+            teamId,
+            scrapeRunId: run.id,
+            added: added.length,
+            revised: files.revised,
+        })
+    }
+
     logger.info(
         fileName,
         `team ${teamId}: ${verdict.kind}, ${items.length} items, ${added.length} new, ` +
