@@ -70,13 +70,14 @@ export type Target = {
 }
 
 // Prior weights, in games. A player term is half-trusted after one game; a
-// coordinator offset after six. Set on a 2026 hold-out (weeks 9-11, fitted on
-// the weeks before each): player priors of 4, 2 and 1 gave MAE 5.95, 5.71 and
-// 5.50 fantasy points against 5.40 for a plain season-average — the shrinkage
-// mostly pulls established starters toward a role mean diluted by backups, so
-// less of it is better until roles separate starters out. The coordinator
-// offsets are worth about 0.1 (5.50 with, 5.62 without). Revisit with more
-// seasons.
+// coordinator offset after six. Re-tuned 2026-08-24 on the same 2026 hold-out
+// (weeks 9-11, fitted on the weeks before each, scripts/evalProjections.ts)
+// after QB/RB baselines split starters from backups: priors of 1, 2, 3 and 4
+// gave MAE 5.31, 5.42, 5.49 and 5.54 against 5.42 for a plain season-average.
+// The split itself was worth ~0.2 (5.50 -> 5.31 at prior 1) and is what put
+// the model AHEAD of the season-average baseline for the first time. The
+// coordinator offsets were worth about 0.1 when last isolated. Revisit with
+// more seasons.
 export const PLAYER_PRIOR_GAMES = 1
 export const COORD_PRIOR_GAMES = 6
 
