@@ -79,14 +79,19 @@ const lineStats = (l: PlayerLine): StatLine => ({
     receptions: l.receptions,
     receivingYards: l.receivingYards,
     receivingTouchdowns: l.receivingTouchdowns,
+    fumblesLost: l.fumblesLost,
     epa: l.epa,
 })
 
-const roleOf = (position: string, alignment: string | null): string =>
+// QB and RB baselines separate the game's starter (led the team in pass or
+// rush attempts) from everyone else: a pooled QB mean is diluted by backups,
+// which drags every starter's shrunk projection down (docs/backlog.md, phase-3
+// accuracy notes). roleGroup() still folds QB:1 and QB:2 to QB for fallback.
+const roleOf = (position: string, alignment: string | null, isStarter: boolean): string =>
     position === 'QUARTERBACK'
-        ? 'QB'
+        ? `QB:${isStarter ? 1 : 2}`
         : position === 'RUNNING_BACK'
-          ? 'RB'
+          ? `RB:${isStarter ? 1 : 2}`
           : `WR:${alignment ?? '?'}`
 
 export type TrainingSet = {
@@ -98,6 +103,8 @@ export type TrainingSet = {
     teamGameIds: Map<number, number[]>
     /** Player ids seen per game id. */
     playersInGame: Map<number, Set<number>>
+    /** Each player's role in their MOST RECENT game (QB:1 vs QB:2, ...). */
+    lastRole: Map<number, string>
 }
 
 /**
@@ -161,6 +168,7 @@ export async function trainingSet(era: RuleEra, asOf: Date): Promise<TrainingSet
         playText: new Map(),
         teamGameIds: new Map(),
         playersInGame: new Map(),
+        lastRole: new Map(),
     }
     for (const g of games) {
         const plays = await db.play.findMany({
@@ -172,6 +180,12 @@ export async function trainingSet(era: RuleEra, asOf: Date): Promise<TrainingSet
         const charts = await gameAlignments(g.startedAt, geniusIds)
         const totals = new Map<string, StatLine>()
         const seen = new Set<number>()
+        const matched: {
+            geniusTeamId: string
+            player: PlayerRef
+            alignment: string | null
+            stats: StatLine
+        }[] = []
         for (const l of lines) {
             const teamId = teamByGenius.get(l.geniusTeamId)
             const stats = lineStats(l)
@@ -182,14 +196,37 @@ export async function trainingSet(era: RuleEra, asOf: Date): Promise<TrainingSet
             const player = matchPlayer(l.player, playersByTeam.get(teamId) ?? [])
             if (!player) continue
             const alignment = alignmentFor(l.player, charts.get(l.geniusTeamId) ?? [])
-            set.observed.push({
-                gameId: g.id,
-                playerKey: String(player.id),
-                role: roleOf(player.position, alignment),
-                stats,
-            })
+            matched.push({ geniusTeamId: l.geniusTeamId, player, alignment, stats })
             set.playText.set(player.id, l.player)
             seen.add(player.id)
+        }
+        // The game's starters, per team: the QB who led in pass attempts and
+        // the RB who led in rush attempts.
+        const leader = (genius: string, position: string, key: 'passAttempts' | 'rushAttempts') =>
+            matched
+                .filter(
+                    (m) =>
+                        m.geniusTeamId === genius &&
+                        m.player.position === position &&
+                        m.stats[key] > 0,
+                )
+                .sort((a, b) => b.stats[key] - a.stats[key])[0]?.player.id
+        const starters = new Set<number>()
+        for (const genius of geniusIds) {
+            const qb1 = leader(genius, 'QUARTERBACK', 'passAttempts')
+            const rb1 = leader(genius, 'RUNNING_BACK', 'rushAttempts')
+            if (qb1 !== undefined) starters.add(qb1)
+            if (rb1 !== undefined) starters.add(rb1)
+        }
+        for (const m of matched) {
+            const role = roleOf(m.player.position, m.alignment, starters.has(m.player.id))
+            set.observed.push({
+                gameId: g.id,
+                playerKey: String(m.player.id),
+                role,
+                stats: m.stats,
+            })
+            set.lastRole.set(m.player.id, role)
         }
         set.playersInGame.set(g.id, seen)
         // Team totals need both sides present to name the opposing DC.
@@ -215,9 +252,14 @@ export async function trainingSet(era: RuleEra, asOf: Date): Promise<TrainingSet
 
 /**
  * Projections for every fixture of one gameweek, from games before `asOf`
- * (default: now). Returns rows without writing them.
+ * (default: now). Returns rows without writing them. `playerPrior` overrides
+ * PLAYER_PRIOR_GAMES — only scripts/evalProjections.ts sweeps it.
  */
-export async function fitGameweek(gameweekId: number, asOf = new Date()): Promise<ProjectionRow[]> {
+export async function fitGameweek(
+    gameweekId: number,
+    asOf = new Date(),
+    playerPrior?: number,
+): Promise<ProjectionRow[]> {
     const gw = await db.gameweek.findUniqueOrThrow({
         where: { id: gameweekId },
         select: {
@@ -271,12 +313,23 @@ export async function fitGameweek(gameweekId: number, asOf = new Date()): Promis
                 if (!dressed.has(p.id)) continue
                 const text = set.playText.get(p.id)
                 const alignment = text && chart ? alignmentFor(text, chart.positions) : null
-                const out = project(model, {
-                    playerKey: String(p.id),
-                    role: roleOf(p.position, alignment),
-                    ocKey,
-                    dcKey,
-                })
+                // A QB or RB is projected as the starter only if they were the
+                // starter in their most recent game — the chart PDFs carry no
+                // QB/RB depth, so usage is the freshest signal there is.
+                const role =
+                    p.position === 'QUARTERBACK' || p.position === 'RUNNING_BACK'
+                        ? (set.lastRole.get(p.id) ?? roleOf(p.position, null, false))
+                        : roleOf(p.position, alignment, false)
+                const out = project(
+                    model,
+                    {
+                        playerKey: String(p.id),
+                        role,
+                        ocKey,
+                        dcKey,
+                    },
+                    playerPrior,
+                )
                 if (!out) continue
                 rows.push({
                     playerId: p.id,

@@ -52,6 +52,22 @@ describe('fantasyPoints', () => {
         ).toBe(29.5)
     })
 
+    it('docks two points for a lost fumble', () => {
+        expect(
+            fantasyPoints({
+                passingYards: 250,
+                passingTouchdowns: 0,
+                interceptions: 0,
+                rushingYards: 0,
+                rushingTouchdowns: 0,
+                receptions: 0,
+                receivingYards: 0,
+                receivingTouchdowns: 0,
+                fumblesLost: 1,
+            }),
+        ).toBe(8)
+    })
+
     it('adds converts and return touchdowns when given', () => {
         expect(
             fantasyPoints({

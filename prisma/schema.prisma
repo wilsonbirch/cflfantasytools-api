@@ -538,6 +538,10 @@ model Play {
   // excluded from any expected-points fit.
   isNoPlay    Boolean  @default(false)
 
+  // Who fumbled, kept only when their team LOST the ball (last recovery in the
+  // text decides). Play-text name; null on plays without a lost fumble.
+  fumbleLostBy String?
+
   penaltyTeam  String?
   penaltyName  String?
   penaltyYards Int?
@@ -800,6 +804,8 @@ model Projection {
   receptions          Float
   receivingYards      Float
   receivingTouchdowns Float
+  // Added after the first fits; 0 on rows fitted before it existed.
+  fumblesLost         Float    @default(0)
   epa                 Float
 
   Player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)

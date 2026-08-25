@@ -369,6 +369,7 @@ type Play {
   down: Int
   driveNumber: Int!
   epa: Float
+  fumbleLostBy: String
   id: Int!
 
   """Whether a pass was caught; null on non-pass plays."""
@@ -408,6 +409,7 @@ type PlayerGameStats {
   alignment: String
   completions: Int!
   epa: Float!
+  fumblesLost: Int!
   gameId: Int!
   interceptions: Int!
   passAttempts: Int!
@@ -438,6 +440,7 @@ enum PlayerPosition {
 type PlayerSeasonStats {
   completions: Int!
   epa: Float!
+  fumblesLost: Int!
   games: Int!
   interceptions: Int!
   passAttempts: Int!
@@ -477,6 +480,7 @@ type Projection {
   """
   epa: Float!
   fittedAt: DateTime!
+  fumblesLost: Float!
 
   """
   Games behind the player term; the fewer, the more the projection is pooled.
