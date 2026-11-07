@@ -40,8 +40,8 @@ kill_timeout = '300s'
 
 [env]
   # OFF BY DEFAULT (since 2026-11-07). Production sits fully stopped — database,
-  # worker and web — and data is collected on demand by scripts/collect.sh (or
-  # the Collect workflow), which starts the database, lets the worker run every
+  # worker and web — and data is collected on demand from a workstation by
+  # scripts/collect.sh, which starts the database, lets the worker run every
   # due job, verifies them through jobHealth, and stops the database again.
   #
   # The ticker is off because web now starts on any request, and a stray hit on

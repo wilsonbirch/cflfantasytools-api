@@ -16,8 +16,8 @@
 # Env:
 #   KEEP_DB=1               leave the database running after `run` (for debugging)
 #   WORKER_TIMEOUT_MIN=45   give up waiting for the worker after this long
-#   FLY_API_TOKEN           in CI: deploy token for the api app
-#   FLY_DB_TOKEN            in CI: deploy token for the database app
+#   FLY_API_TOKEN           in CI (the deploy workflow): deploy token for the api app
+#   FLY_DB_TOKEN            in CI (the deploy workflow): deploy token for the database app
 #   (Locally, leave both unset and flyctl uses your `fly auth login`.)
 #
 # Why a run is verified through jobHealth rather than the worker's exit code:
