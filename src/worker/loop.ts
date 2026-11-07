@@ -118,8 +118,11 @@ export async function runWorkerSession({
             continue
         }
         // Re-check the schedule so a long-lived session keeps firing recurring
-        // rules rather than only the ones due at boot.
-        if (Date.now() - lastScheduleCheck >= scheduleCheckMs) {
+        // rules rather than only the ones due at boot. 0 turns this off: an
+        // on-demand collection must enqueue once and finish. With re-checks on,
+        // a 30-minute sweep re-enqueued itself every half hour, and any job
+        // still retrying kept the queue non-empty, so the session never ended.
+        if (scheduleCheckMs > 0 && Date.now() - lastScheduleCheck >= scheduleCheckMs) {
             lastScheduleCheck = Date.now()
             if ((await enqueueDueSchedules(schedules)) > 0) continue
         }
