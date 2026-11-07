@@ -1,0 +1,74 @@
+{
+    "configuration": {
+        "general": {
+            "trackingEnabled": true,
+            "fullStoryScript": {
+                "fullStoryScript": true,
+                "fullStoryOrg": "o-241REY-na1",
+                "experimental": true,
+                "executionProbability": 0.01
+            },
+            "vastConfiguration": { "vastEnabled": false, "hideFullScreen": false }
+        },
+        "specific": {
+            "showTimeouts": true,
+            "showRecords": true,
+            "showQuarterlyScore": true,
+            "showTeamColor": true,
+            "isAwayTeamFirst": true,
+            "templateInformation": {
+                "name": "SCOREBOARD_V1",
+                "coverages": [{ "name": "MATCH_STATE_V1" }, { "name": "FIXTURES_V1" }]
+            }
+        }
+    },
+    "data": {
+        "status": { "status": "AVAILABLE", "description": "Ok" },
+        "details": {
+            "matchSummaries": {
+                "currentPhase": "4",
+                "matchStatus": "PostMatch",
+                "phase": "4",
+                "possession": "None",
+                "timeRemainingInPhase": "00:00",
+                "scoreByPhase": {
+                    "awayScore": { "phase1": 7, "phase2": 3, "phase3": 6, "phase4": 0 },
+                    "homeScore": { "phase1": 7, "phase2": 18, "phase3": 14, "phase4": 7 }
+                },
+                "clockUnreliable": false
+            },
+            "homeTeam": {
+                "competitorId": "86680",
+                "displayName": "Montreal Alouettes",
+                "abbreviation": "MTL",
+                "teamColor": "#021D49",
+                "logoUrl": "https://gsm-shared-assets.betstream.betgenius.com/shared/assets/sports/american-football/competitors/logos/png/86680.png",
+                "score": "46",
+                "timeoutsLeft": 1
+            },
+            "awayTeam": {
+                "competitorId": "88019",
+                "displayName": "Ottawa REDBLACKS",
+                "abbreviation": "OTT",
+                "teamColor": "#AC1F2D",
+                "logoUrl": "https://gsm-shared-assets.betstream.betgenius.com/shared/assets/sports/american-football/competitors/logos/svg/88019.svg",
+                "score": "16",
+                "timeoutsLeft": 1
+            },
+            "additionalInfo": "",
+            "venueName": "Percival Molson Memorial Stadium",
+            "scheduledStartTime": "2026-08-20T23:30:00Z",
+            "totalTimeouts": 0,
+            "totalPhases": 4,
+            "sportId": "17",
+            "sportName": "AmericanFootball",
+            "competitionName": "Canadian Football League",
+            "fixtureName": "Montreal Alouettes v Ottawa RedBlacks",
+            "competitionId": "1035",
+            "seasonId": "169290",
+            "seasonName": "2026 CFL",
+            "roundId": "1420023",
+            "roundName": "Week 12"
+        }
+    }
+}

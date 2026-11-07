@@ -1,53 +1,105 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { gamePageUrl, parseFixtureId, parseGameLinks } from '~/services/pbp/discoverFixtures.server'
+import { parseScheduleFixtures, unflattenNuxtPayload } from '~/services/pbp/discoverFixtures.server'
 
-// Real markup, trimmed to the parts the parsers read. CFL publishes the
-// BetGenius fixture id in the tracker embed on every game page, which is what
-// makes discovery deterministic — 3DF's ids were found by probing the id space
-// until one hit, then counting backwards to game one.
+// Real cfl.ca/schedule/ markup from 2026-11-07, after the site moved to Nuxt.
+// Every fixture in the season is server-rendered into __NUXT_DATA__ with its
+// BetGenius id attached, so discovery needs no per-game page fetches.
 const schedule = readFileSync('test/fixtures/pbp/schedule.html', 'utf8')
-const gamePage = readFileSync('test/fixtures/pbp/game-page.html', 'utf8')
 
-describe('parseGameLinks', () => {
-    it('extracts game ids and slugs from real schedule markup', () => {
-        const links = parseGameLinks(schedule)
-        expect(links.length).toBeGreaterThan(0)
-        expect(links[0]).toEqual({
+const nuxtPage = (values: unknown[]) =>
+    `<script type="application/json" id="__NUXT_DATA__" data-ssr="true">${JSON.stringify(values)}</script>`
+
+describe('parseScheduleFixtures', () => {
+    const fixtures = parseScheduleFixtures(schedule)
+
+    it('finds the whole 2026 season: 9 preseason, 81 regular, 5 playoff', () => {
+        expect(fixtures).toHaveLength(95)
+    })
+
+    it('reads the BetGenius id alongside the cfl.ca game id and kickoff', () => {
+        expect(fixtures[0]).toEqual({
             cflGameId: 6582,
-            slug: 'calgary-stampeders-vs-saskatchewan-roughriders',
+            fixtureId: 13419665,
+            startAt: new Date('2026-05-18T19:00:00Z'),
         })
     })
 
-    it('deduplicates a game linked more than once on the page', () => {
-        const html = '<a href="https://www.cfl.ca/games/1/a-vs-b/">x</a>'.repeat(3)
-        expect(parseGameLinks(html)).toHaveLength(1)
+    it('includes the fixtures the old discovery silently missed', () => {
+        const ids = new Set(fixtures.map((f) => f.fixtureId))
+        // Week 14 opener and the Western semi-final — both absent from prod
+        // until this fix.
+        expect(ids.has(13419724)).toBe(true)
+        expect(ids.has(14617316)).toBe(true)
     })
 
-    it('returns them in schedule order', () => {
-        const ids = parseGameLinks(schedule).map((l) => l.cflGameId)
-        expect(ids).toEqual([...ids].sort((a, b) => a - b))
+    it('keeps the Grey Cup, which is listed before its teams are known', () => {
+        expect(fixtures.map((f) => f.fixtureId)).toContain(13463068)
     })
 
-    it('returns nothing rather than throwing when the page has no games', () => {
-        expect(parseGameLinks('<html><body>no games here</body></html>')).toEqual([])
+    it('returns them in kickoff order', () => {
+        const t = fixtures.map((f) => f.startAt?.getTime() ?? 0)
+        expect(t).toEqual([...t].sort((a, b) => a - b))
+    })
+
+    it('returns nothing rather than throwing when the payload is absent or broken', () => {
+        expect(parseScheduleFixtures('<html><body>no payload</body></html>')).toEqual([])
+        expect(parseScheduleFixtures('<script id="__NUXT_DATA__">not json</script>')).toEqual([])
+    })
+
+    it('deduplicates a fixture referenced from more than one place', () => {
+        // root -> [fixture, fixture-copy]; both carry genius id 7, only the
+        // first knows its kickoff — and that is the copy to keep.
+        const page = nuxtPage([
+            [1, 1, 5],
+            { ID: 2, genius: 3, start_at: 4, home_team_id: 2, away_team_id: 2 },
+            10,
+            { id: 6 },
+            '2026-06-01T00:00:00Z',
+            { ID: 2, genius: 3, home_team_id: 2, away_team_id: 2 },
+            7,
+        ])
+        expect(parseScheduleFixtures(page)).toEqual([
+            { cflGameId: 10, fixtureId: 7, startAt: new Date('2026-06-01T00:00:00Z') },
+        ])
+    })
+    it('ignores teams and venues, which also carry ID and genius.id', () => {
+        // A team object as the real page carries it under teams-primary.
+        const page = nuxtPage([
+            [1],
+            { ID: 2, genius: 3, abbreviation: 4 },
+            1,
+            { id: 5 },
+            'BC',
+            93775,
+        ])
+        expect(parseScheduleFixtures(page)).toEqual([])
     })
 })
 
-describe('parseFixtureId', () => {
-    it('reads the fixture id out of the real tracker embed', () => {
-        expect(parseFixtureId(gamePage)).toBe(13419665)
+describe('unflattenNuxtPayload', () => {
+    it('unwraps Vue reactivity wrappers to their value', () => {
+        expect(unflattenNuxtPayload([['ShallowReactive', 1], { a: 2 }, 'x'])).toEqual({ a: 'x' })
     })
 
-    it('returns null when the embed is absent, so the game is skipped not fatal', () => {
-        expect(parseFixtureId('<html><body>no tracker</body></html>')).toBeNull()
+    it('resolves a shared reference to the same object', () => {
+        const out = unflattenNuxtPayload([{ a: 1, b: 1 }, { v: 2 }, 3]) as {
+            a: object
+            b: object
+        }
+        expect(out.a).toBe(out.b)
     })
-})
 
-describe('gamePageUrl', () => {
-    it('builds the canonical game page url', () => {
-        expect(gamePageUrl(6582, 'calgary-stampeders-vs-saskatchewan-roughriders')).toBe(
-            'https://www.cfl.ca/games/6582/calgary-stampeders-vs-saskatchewan-roughriders/',
-        )
+    it('survives a cycle', () => {
+        const out = unflattenNuxtPayload([{ self: 0 }]) as { self: unknown }
+        expect(out.self).toBe(out)
+    })
+
+    it('rebuilds null-prototype objects', () => {
+        expect(unflattenNuxtPayload([['null', 'k', 1], 'v'])).toEqual({ k: 'v' })
+    })
+
+    it('treats negative indices (devalue sentinels) as undefined', () => {
+        expect(unflattenNuxtPayload([{ a: -1 }])).toEqual({ a: undefined })
     })
 })
