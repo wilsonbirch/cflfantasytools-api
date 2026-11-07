@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TEAMS } from '~/data/teams'
+import { STRATEGIES } from '~/services/depthCharts/scrape/extractors'
 
 // These are guardrails against the single most dangerous mistake in this port:
 // three different 1-9 (and numeric) id spaces that look interchangeable and are not.
@@ -35,7 +36,13 @@ describe('team seed data', () => {
     })
 
     it('only references implemented extractor strategies', () => {
-        const known = new Set(['tableRowCells', 'tableCellLookback', 'cardList'])
-        for (const t of TEAMS) expect(known.has(t.strategy)).toBe(true)
+        // Against the list exported beside the implementations, not a copy that
+        // can drift — a composite club's parts are checked too.
+        const known = new Set<string>(STRATEGIES)
+        for (const t of TEAMS) {
+            expect(known.has(t.strategy)).toBe(true)
+            const parts = (t.config as { parts?: { strategy: string }[] }).parts ?? []
+            for (const p of parts) expect(known.has(p.strategy)).toBe(true)
+        }
     })
 })

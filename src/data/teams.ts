@@ -30,7 +30,9 @@ export type TeamSeed = {
 //   tableRowCells      { titleCells, linkCell, minCells, hrefMustMatch?,
 //                        hrefMustInclude?, skipHeaderMatch? }
 //   tableCellLookback  { lookback }
-//   cardList           { cardSelector, titleSelectors }
+//   cardList           { cardSelector, titleSelectors, linkTextMatch?, linkHrefMatch? }
+//   articleList        { linkHrefMatch, titleSelector?, pdfHrefMatch? }
+//   composite          { parts: [{ strategy, config }] }
 export const TEAMS: TeamSeed[] = [
     {
         slug: 'saskatchewan-roughriders',
@@ -42,9 +44,13 @@ export const TEAMS: TeamSeed[] = [
         geniusTeamId: '106752',
         gameZoneSquadId: 8,
         legacyTeamId: 1,
-        depthChartUrl: 'https://www.riderville.com/position-charts-and-game-notes/',
-        strategy: 'tableCellLookback',
-        config: { lookback: 3 },
+        // Moved when the CFL put every club on one site platform in 2026; the old
+        // WordPress page 404s. Bare domain: www. now redirects to it.
+        depthChartUrl: 'https://riderville.com/position-charts',
+        // Rows are regular on the new page; the lookback walk also caught the
+        // "3 points of the game" article links that now share the table.
+        strategy: 'tableRowCells',
+        config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
         requiresBrowser: false,
     },
     {
@@ -57,8 +63,9 @@ export const TEAMS: TeamSeed[] = [
         geniusTeamId: '93775',
         gameZoneSquadId: 5,
         legacyTeamId: 2,
-        // The 2025 slug 301s to this; recorded resolved so a redirect isn't load-bearing.
-        depthChartUrl: 'https://www.bclions.com/2026-depth-chart-and-notes/',
+        // Moved when the CFL put every club on one site platform in 2026; the old
+        // WordPress page 404s. Bare domain: www. now redirects to it.
+        depthChartUrl: 'https://bclions.com/depth-chart-and-game-notes',
         strategy: 'tableRowCells',
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
         requiresBrowser: false,
@@ -73,9 +80,15 @@ export const TEAMS: TeamSeed[] = [
         geniusTeamId: '114347',
         gameZoneSquadId: 9,
         legacyTeamId: 3,
-        depthChartUrl: 'https://www.goelks.com/gamenotes/',
-        strategy: 'tableRowCells',
-        config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
+        // From 2026 Edmonton posts each chart as its own article; the PDF is
+        // linked from inside it. The old /gamenotes/ page redirects here.
+        depthChartUrl: 'https://goelks.com/depth-chart-updates',
+        strategy: 'articleList',
+        config: {
+            linkHrefMatch: '/article/[^/]*depth-chart',
+            titleSelector: 'p.line-clamp-2',
+            pdfHrefMatch: '\\.pdf$',
+        },
         requiresBrowser: false,
     },
     {
@@ -88,7 +101,9 @@ export const TEAMS: TeamSeed[] = [
         geniusTeamId: '112939',
         gameZoneSquadId: 6,
         legacyTeamId: 4,
-        depthChartUrl: 'https://www.stampeders.com/game-notes/',
+        // Moved when the CFL put every club on one site platform in 2026; the old
+        // WordPress page 404s. Bare domain: www. now redirects to it.
+        depthChartUrl: 'https://stampeders.com/position-charts-game-notes-page',
         strategy: 'tableRowCells',
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
         requiresBrowser: false,
@@ -105,7 +120,8 @@ export const TEAMS: TeamSeed[] = [
         legacyTeamId: 5,
         depthChartUrl: 'https://en.montrealalouettes.com/depth-chart/',
         strategy: 'tableRowCells',
-        config: { titleCells: [0, 1, 2], linkCell: 5, minCells: 6 },
+        // 2026 platform: five cells (… | Digital Roster | Depth Chart), was six.
+        config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
         requiresBrowser: false,
     },
     {
@@ -135,15 +151,33 @@ export const TEAMS: TeamSeed[] = [
         geniusTeamId: '83579',
         gameZoneSquadId: 3,
         legacyTeamId: 7,
-        depthChartUrl: 'https://www.ticats.ca/depth-charts/',
-        strategy: 'tableRowCells',
+        depthChartUrl: 'https://ticats.ca/depth-charts',
+        // 2026 platform. The season is a table (Hamilton's chart in cell 4,
+        // the opponent's in 5) carried in the page payload and inlined by
+        // fetchPage; the newest game is ALSO a card of its own, and Game 18 is
+        // ONLY a card. The card's chart link reads "Hamilton Depth & Roster",
+        // "… Roster Chart" or plain "Depth & Roster" — never the opponent's.
+        strategy: 'composite',
         config: {
-            titleCells: [0, 1, 2],
-            linkCell: 4,
-            minCells: 5,
-            hrefMustMatch: '\\.pdf$',
-            hrefMustInclude: ['Depth', 'Roster'],
-            skipHeaderMatch: ['HAM Depth', 'OPP Depth'],
+            parts: [
+                {
+                    strategy: 'tableRowCells',
+                    config: {
+                        titleCells: [0, 1, 2],
+                        linkCell: 4,
+                        minCells: 5,
+                        hrefMustMatch: '\\.pdf$',
+                    },
+                },
+                {
+                    strategy: 'cardList',
+                    config: {
+                        cardSelector: 'section',
+                        titleSelectors: ['h5'],
+                        linkTextMatch: '^(Hamilton )?Depth & Roster',
+                    },
+                },
+            ],
         },
         requiresBrowser: false,
     },
@@ -172,12 +206,16 @@ export const TEAMS: TeamSeed[] = [
         geniusTeamId: '88019',
         gameZoneSquadId: 1,
         legacyTeamId: 9,
-        depthChartUrl: 'https://www.ottawaredblacks.com/depth-charts/',
+        depthChartUrl: 'https://ottawaredblacks.com/depth-charts',
         strategy: 'cardList',
-        // Redesigned since 3DF: .redblacks-primary-card no longer exists, and
-        // the cards are rendered client-side — the raw HTML contains no PDF
-        // links at all, so this is the one club that genuinely needs a browser.
-        config: { cardSelector: '.depth-card', titleSelectors: ['h3', 'p'] },
-        requiresBrowser: true,
+        // 2026 platform: server-rendered, so no browser is needed any more —
+        // the client-rendered page that made Ottawa the one Chromium club is gone.
+        config: {
+            cardSelector: 'li',
+            titleSelectors: ['h3', 'p'],
+            // The button text varies by week; the card's one PDF is the chart.
+            linkHrefMatch: '\\.pdf$',
+        },
+        requiresBrowser: false,
     },
 ]

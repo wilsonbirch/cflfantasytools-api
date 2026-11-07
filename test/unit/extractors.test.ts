@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { TEAMS } from '~/data/teams'
 import {
     extract,
+    findArticlePdf,
     normalizeHref,
     normalizeTitle,
     type Doc,
@@ -53,24 +54,186 @@ describe.each(TEAMS.map((t) => [t.abbreviation, t] as const))('%s', (abbr, team)
     })
 })
 
-describe('Hamilton specifics', () => {
+const html = (markup: string): Doc =>
+    parseHTML(`<html><body>${markup}</body></html>`).document as unknown as Doc
+
+describe('Hamilton specifics (2026 platform: season table + newest-game cards)', () => {
     const ham = TEAMS.find((t) => t.abbreviation === 'HAM')!
-    const items = extract(load(ham.slug), 'tableRowCells', ham.config, 'https://www.ticats.ca')
+    const items = extract(load(ham.slug), 'composite', ham.config, 'https://ticats.ca')
 
-    it('skips the prior-season table kept on the same page', () => {
-        // That table's rows link 2015-era uploads and are titled "CLICK HERE".
-        expect(items.some((i) => i.href.includes('/2015/'))).toBe(false)
-        expect(items.some((i) => i.title.includes('CLICK HERE'))).toBe(false)
+    it('finds the season table carried only in the page payload', () => {
+        expect(items.some((i) => i.href.endsWith('HAM-Depth-Roster-W1-v-MTL-June-4.pdf'))).toBe(
+            true,
+        )
     })
 
-    it('rejects a link wrapped in a redirector', () => {
-        // An Outlook safelink carries the real .pdf in its query string, so
-        // filtering the raw href would let it through.
-        expect(items.some((i) => i.href.includes('safelinks'))).toBe(false)
+    it('finds Game 18, which exists only as a card linked "Depth & Roster"', () => {
+        expect(items.some((i) => i.title.startsWith('Game 18'))).toBe(true)
     })
 
-    it('keeps only PDFs', () => {
-        for (const item of items) expect(item.href).toMatch(/\.pdf$/i)
+    it("tracks Hamilton's chart only — never the opponent's or the game notes", () => {
+        // Every card links all three; picking the wrong one would double the
+        // count and file other clubs' charts under Hamilton.
+        expect(items).toHaveLength(15)
+        expect(items.some((i) => /Gm_Notes|Game_Notes/i.test(i.href))).toBe(false)
+        expect(
+            items.some((i) => /^(OTT|Week_14_TOR)_Depth/.test(i.href.split('/').pop() ?? '')),
+        ).toBe(false)
+    })
+})
+
+describe('Ottawa specifics', () => {
+    const ott = TEAMS.find((t) => t.abbreviation === 'OTT')!
+    const items = extract(load(ott.slug), 'cardList', ott.config, 'https://ottawaredblacks.com')
+
+    it('finds every chart whatever the button says that week', () => {
+        // "Download Depth Chart" until July, then "Depth Chart" and "Download".
+        expect(items).toHaveLength(13)
+        expect(items.at(-1)?.href).toMatch(/WK21\.DEPTHCHART\.pdf$/)
+    })
+
+    it('needs no browser any more', () => {
+        expect(ott.requiresBrowser).toBe(false)
+    })
+})
+
+describe('tableRowCells options', () => {
+    const row = (title: string, href: string) =>
+        `<tr><td>${title}</td><td>d</td><td>t</td><td>x</td><td><a href="${href}">c</a></td></tr>`
+    const cfg = {
+        titleCells: [0, 1, 2],
+        linkCell: 4,
+        minCells: 5,
+        hrefMustMatch: '\\.pdf$',
+        skipHeaderMatch: ['Prior Season'],
+    }
+
+    it('skips a table whose header marks it as another season', () => {
+        const doc = html(
+            `<table><thead><tr><th>Prior Season</th></tr></thead><tbody>${row('Old', '/2015/a.pdf')}</tbody></table>` +
+                `<table><thead><tr><th>2026</th></tr></thead><tbody>${row('New', '/2026/b.pdf')}</tbody></table>`,
+        )
+        expect(extract(doc, 'tableRowCells', cfg, 'https://x.test').map((i) => i.href)).toEqual([
+            'https://x.test/2026/b.pdf',
+        ])
+    })
+
+    it('rejects a link wrapped in a redirector, whose query string carries the .pdf', () => {
+        const safelink =
+            'https://nam.safelinks.protection.outlook.com/?url=https%3A%2F%2Fx.test%2Fa.pdf'
+        const doc = html(`<table><tbody>${row('Wrapped', safelink)}</tbody></table>`)
+        expect(extract(doc, 'tableRowCells', cfg, 'https://x.test')).toEqual([])
+    })
+})
+
+describe('cardList link selection', () => {
+    const card = (links: string) => `<div class="card"><h3>Week 1</h3>${links}</div>`
+
+    it('takes the first link when nothing narrows it', () => {
+        const doc = html(
+            card('<a href="/preview">Game Preview</a><a href="/c.pdf">Depth Chart</a>'),
+        )
+        const items = extract(
+            doc,
+            'cardList',
+            { cardSelector: '.card', titleSelectors: ['h3'] },
+            'https://x.test',
+        )
+        expect(items[0].href).toBe('https://x.test/preview')
+    })
+
+    it('picks the link whose text matches, skipping "Game Preview" and the opponent', () => {
+        const doc = html(
+            card(
+                '<a href="/preview">Game Preview</a><a href="/opp.pdf">Opponent Depth &amp; Roster</a>' +
+                    '<a href="/ham.pdf">Hamilton Depth &amp; Roster</a>',
+            ),
+        )
+        const items = extract(
+            doc,
+            'cardList',
+            {
+                cardSelector: '.card',
+                titleSelectors: ['h3'],
+                linkTextMatch: '^(Hamilton )?Depth & Roster',
+            },
+            'https://x.test',
+        )
+        expect(items).toEqual([{ title: 'Week 1', href: 'https://x.test/ham.pdf' }])
+    })
+
+    it('picks the link whose href matches, and skips a card without one', () => {
+        const doc = html(
+            card('<a href="/preview">Preview</a><a href="/c.pdf?v=2">Download</a>') +
+                card('<a href="/nav">Depth Charts</a>'),
+        )
+        const items = extract(
+            doc,
+            'cardList',
+            { cardSelector: '.card', titleSelectors: ['h3'], linkHrefMatch: '\\.pdf$' },
+            'https://x.test',
+        )
+        expect(items).toEqual([{ title: 'Week 1', href: 'https://x.test/c.pdf' }])
+    })
+})
+
+describe('composite', () => {
+    const doc = html(
+        '<table><tr><td>G1</td><td>a</td><td>b</td><td>c</td><td><a href="/g1.pdf">x</a></td></tr></table>' +
+            '<div class="card"><h3>G1 again</h3><a href="/g1.pdf">Depth</a></div>' +
+            '<div class="card"><h3>G2</h3><a href="/g2.pdf">Depth</a></div>',
+    )
+    const table = {
+        strategy: 'tableRowCells',
+        config: { titleCells: [0], linkCell: 4, minCells: 5 },
+    }
+    const cards = {
+        strategy: 'cardList',
+        config: { cardSelector: '.card', titleSelectors: ['h3'] },
+    }
+
+    it('unions its parts, the first part winning a chart both find', () => {
+        expect(extract(doc, 'composite', { parts: [table, cards] }, 'https://x.test')).toEqual([
+            { title: 'G1', href: 'https://x.test/g1.pdf' },
+            { title: 'G2', href: 'https://x.test/g2.pdf' },
+        ])
+    })
+
+    it('ignores a nested composite rather than recursing', () => {
+        const nested = { strategy: 'composite', config: { parts: [cards] } }
+        expect(extract(doc, 'composite', { parts: [nested] }, 'https://x.test')).toEqual([])
+    })
+})
+
+describe('articleList', () => {
+    const cfg = {
+        linkHrefMatch: '/article/[^/]*depth-chart',
+        titleSelector: 'p.t',
+        pdfHrefMatch: '\\.pdf$',
+    }
+
+    it('yields each matching article, keeping it as the page to resolve', () => {
+        const doc = html(
+            '<a href="/article/11-07-2026-depth-chart-vs-bc"><p class="tag">Depth</p><p class="t">Depth Chart: VS BC</p></a>' +
+                '<a href="/article/some-recap">Recap</a>',
+        )
+        expect(extract(doc, 'articleList', cfg, 'https://goelks.com')).toEqual([
+            {
+                title: 'Depth Chart: VS BC',
+                href: 'https://goelks.com/article/11-07-2026-depth-chart-vs-bc',
+                page: 'https://goelks.com/article/11-07-2026-depth-chart-vs-bc',
+            },
+        ])
+    })
+
+    it('finds the PDF inside an article, or null when there is none', () => {
+        const article = html(
+            '<a href="/x">Share</a><a href="https://static.cfl.ca/a.pdf">View Depth Chart</a>',
+        )
+        expect(findArticlePdf(article, cfg, 'https://goelks.com')).toBe(
+            'https://static.cfl.ca/a.pdf',
+        )
+        expect(findArticlePdf(html('<p>no chart</p>'), cfg, 'https://goelks.com')).toBeNull()
     })
 })
 

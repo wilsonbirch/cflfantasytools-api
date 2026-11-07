@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { db } from '~/lib/db.server'
-import { checkTeam, sweepAllTeams } from '~/services/depthCharts/checkTeam.server'
+import {
+    BACKFILL_THRESHOLD,
+    checkTeam,
+    sweepAllTeams,
+} from '~/services/depthCharts/checkTeam.server'
 
 const CGY = readFileSync('test/fixtures/depth-charts/calgary-stampeders.html', 'utf8')
 
@@ -23,6 +27,13 @@ async function seedTeam(overrides: Record<string, unknown> = {}) {
         },
     })
     return team
+}
+
+/** Forget the last n items of the stored snapshot, so the next scrape sees them as new. */
+async function dropFromSnapshot(n: number) {
+    const list = await db.depthChartList.findFirstOrThrow()
+    const items = list.value as { title: string; href: string }[]
+    await db.depthChartList.update({ where: { id: list.id }, data: { value: items.slice(0, -n) } })
 }
 
 describe('checkTeam', () => {
@@ -55,6 +66,58 @@ describe('checkTeam', () => {
         expect(r.addedCount).toBe(1)
         const chart = await db.depthChart.findFirstOrThrow()
         expect(chart.value).toBe(items.at(-1)?.href)
+    })
+
+    it('alerts subscribers about a single genuinely new chart', async () => {
+        const team = await seedTeam()
+        await checkTeam(team.id, 2026, serve(CGY))
+        await dropFromSnapshot(1)
+
+        await checkTeam(team.id, 2026, serve(CGY))
+        expect(await db.job.count({ where: { kind: 'chart-alert' } })).toBe(1)
+    })
+
+    it('treats a burst of new charts as a backfill: recorded and archived, but no alert', async () => {
+        // A club re-hosting its PDFs, or the scraper catching up after an
+        // outage — November 2026 was both. Emailing about each would be spam.
+        const team = await seedTeam()
+        await checkTeam(team.id, 2026, serve(CGY))
+        await dropFromSnapshot(BACKFILL_THRESHOLD + 2)
+
+        const r = await checkTeam(team.id, 2026, serve(CGY))
+        expect(r.addedCount).toBe(BACKFILL_THRESHOLD + 2)
+        expect(await db.depthChart.count()).toBe(BACKFILL_THRESHOLD + 2)
+        expect(await db.job.count({ where: { kind: 'chart-alert' } })).toBe(0)
+    })
+
+    it('resolves an article-per-chart club to the PDFs inside the articles', async () => {
+        const listing =
+            '<a href="/article/11-07-2026-depth-chart-vs-bc"><p class="t">VS BC</p></a>' +
+            '<a href="/article/10-24-2026-depth-chart-at-ssk"><p class="t">AT SSK</p></a>'
+        const pages: Record<string, string> = {
+            'https://goelks.com/depth-chart-updates': listing,
+            'https://goelks.com/article/11-07-2026-depth-chart-vs-bc':
+                '<a href="https://static.cfl.ca/1107-vs-BC.pdf">View Depth Chart</a>',
+            'https://goelks.com/article/10-24-2026-depth-chart-at-ssk':
+                '<a href="https://static.cfl.ca/1024-at-SSK.pdf">View Depth Chart</a>',
+        }
+        const site = (async (input: string | URL | Request) =>
+            new Response(pages[String(input)] ?? '%PDF-1.7', {
+                status: 200,
+            })) as unknown as typeof fetch
+        const team = await seedTeam({
+            url: 'https://goelks.com/depth-chart-updates',
+            strategy: 'articleList',
+            config: { linkHrefMatch: '/article/[^/]*depth-chart', titleSelector: 'p.t' },
+        })
+
+        const r = await checkTeam(team.id, 2026, site)
+        expect(r.status).toBe('OK')
+        const list = await db.depthChartList.findFirstOrThrow()
+        expect((list.value as { href: string }[]).map((i) => i.href)).toEqual([
+            'https://static.cfl.ca/1107-vs-BC.pdf',
+            'https://static.cfl.ca/1024-at-SSK.pdf',
+        ])
     })
 
     it('creates nothing on a repeat scrape', async () => {

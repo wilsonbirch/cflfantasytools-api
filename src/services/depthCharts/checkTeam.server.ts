@@ -5,8 +5,14 @@ import { getDepthChartInfo } from './season.server'
 import { archiveChartFiles } from './archiveFiles.server'
 import { diffSnapshot } from './diffSnapshot.server'
 import { parseChartPositions } from './parsePositions.server'
-import { extract, isStrategy, type DepthChartItem } from './scrape/extractors'
+import {
+    extract,
+    isStrategy,
+    type ArticleListConfig,
+    type DepthChartItem,
+} from './scrape/extractors'
 import { fetchPage } from './scrape/fetchPage.server'
+import { resolveArticlePdfs } from './scrape/resolveArticles.server'
 
 const fileName = 'services/depthCharts/checkTeam'
 
@@ -22,6 +28,14 @@ export type CheckResult = {
 
 const asItems = (value: unknown): DepthChartItem[] | null =>
     Array.isArray(value) ? (value as DepthChartItem[]) : null
+
+// A club posts one or two charts a week. More than this many new charts in a
+// single scrape is not news — it is a backfill: a club re-hosting its PDFs on
+// a new site (every URL changes), or a scraper fixed after an outage catching
+// up on the weeks it missed. Both happened together in November 2026. The
+// charts are still recorded and archived; subscribers are just not emailed
+// about a burst of stale ones.
+export const BACKFILL_THRESHOLD = 3
 
 /**
  * Scrape one club, diff against its last snapshot, and persist what changed.
@@ -50,16 +64,26 @@ export async function checkTeam(
     if (!source.enabled) return fail('source disabled')
     if (!isStrategy(source.strategy)) return fail(`unknown strategy "${source.strategy}"`)
 
+    const list = await db.depthChartList.findUnique({ where: { teamId_year: { teamId, year } } })
+    const previous = list ? asItems(list.value) : null
+
     let items: DepthChartItem[]
     try {
         const doc = await fetchPage(source.url, source.requiresBrowser, fetchImpl)
         items = extract(doc, source.strategy, source.config, new URL(source.url).origin)
+        if (source.strategy === 'articleList') {
+            items = await resolveArticlePdfs(
+                items,
+                previous,
+                source.config as unknown as ArticleListConfig,
+                fetchImpl,
+            )
+        }
     } catch (err) {
         return fail(err instanceof Error ? err.message : String(err))
     }
 
-    const list = await db.depthChartList.findUnique({ where: { teamId_year: { teamId, year } } })
-    const verdict = diffSnapshot(list ? asItems(list.value) : null, items)
+    const verdict = diffSnapshot(previous, items)
 
     if (verdict.kind === 'rejected') {
         // Deliberately do NOT overwrite the snapshot: a bad scrape must not
@@ -117,13 +141,24 @@ export async function checkTeam(
 
     // Something a subscriber cares about happened: fan the alert out as its own
     // job so a Resend outage retries without re-scraping, keyed by this run so
-    // a retry cannot double-send. A first snapshot is a backfill, not news.
-    if (verdict.kind !== 'first-snapshot' && (added.length > 0 || files.revised > 0)) {
+    // a retry cannot double-send. A first snapshot is a backfill, not news, and
+    // so is a burst of more than BACKFILL_THRESHOLD charts at once.
+    const backfill = added.length > BACKFILL_THRESHOLD
+    if (backfill) {
+        logger.info(
+            fileName,
+            `team ${teamId}: ${added.length} new charts at once — treated as a backfill, no alert`,
+        )
+    }
+    // A re-hosted chart was merged into its original during archiving; it is
+    // not a posting, so it does not count toward an alert.
+    const fresh = Math.max(0, added.length - files.rehosted)
+    if (verdict.kind !== 'first-snapshot' && !backfill && (fresh > 0 || files.revised > 0)) {
         const { jobEnqueue } = await import('~/dao/job.server')
         await jobEnqueue('chart-alert', {
             teamId,
             scrapeRunId: run.id,
-            added: added.length,
+            added: fresh,
             revised: files.revised,
         })
     }
@@ -131,7 +166,8 @@ export async function checkTeam(
     logger.info(
         fileName,
         `team ${teamId}: ${verdict.kind}, ${items.length} items, ${added.length} new, ` +
-            `${files.archived} archived, ${files.revised} revised, ${files.failed} fetch failures, ` +
+            `${files.archived} archived, ${files.rehosted} re-hosted, ${files.revised} revised, ` +
+            `${files.failed} fetch failures, ` +
             `${positions.ok}/${positions.parsed} charts parsed`,
     )
     return {
