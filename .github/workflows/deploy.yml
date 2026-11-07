@@ -10,6 +10,12 @@
 # inside Fly, on the app image, with the app's own secrets — so this workflow
 # needs no database password and no tunnel, and a failed migration aborts the
 # release before any machine takes the new version.
+#
+# Production is OFF by default (see fly.toml), and that release command needs
+# the database. So the database is started for the deploy and stopped again
+# afterwards — but only if it was off to begin with, so a deploy never powers
+# down a database someone is using. That needs FLY_DB_TOKEN, a deploy token for
+# the database app, alongside the api's FLY_API_TOKEN.
 name: Deploy
 
 on:
@@ -18,9 +24,10 @@ on:
     workflow_dispatch:
 
 # Never let two deploys overlap, and never cancel one mid-roll — a half-applied
-# release is worse than a queued one.
+# release is worse than a queued one. Shared with the Collect workflow: both
+# power the database up and down, and must not do it under each other.
 concurrency:
-    group: deploy-production
+    group: production
     cancel-in-progress: false
 
 jobs:
@@ -33,6 +40,15 @@ jobs:
             # compromise of that action runs attacker code with the token.
             # Bump deliberately: superfly/flyctl-actions master @ 2026-04-08.
             - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+
+            - name: Start the database for the release command
+              id: db
+              env:
+                  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+                  FLY_DB_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
+              run: |
+                  echo "was=$(scripts/collect.sh db-state)" >> "$GITHUB_OUTPUT"
+                  scripts/collect.sh db-up
 
             - name: Deploy
               env:
@@ -51,3 +67,10 @@ jobs:
                   done
                   echo "::error::/health did not return 200 after the deploy"
                   exit 1
+
+            - name: Stop the database again
+              if: always() && steps.db.outputs.was == 'stopped'
+              env:
+                  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+                  FLY_DB_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
+              run: scripts/collect.sh db-down

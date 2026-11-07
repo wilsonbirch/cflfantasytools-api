@@ -6,8 +6,9 @@
 # has users whose data a bad deploy could damage.
 #
 # Two process groups from one image:
-#   web    — GraphQL + /health
-#   worker — drains the Job table, then idle-exits so the machine stops
+#   web    — GraphQL + /health; scales to zero
+#   worker — enqueues due scheduled jobs on boot, drains the Job table, then
+#            idle-exits so the machine stops
 #
 # Secrets (DATABASE_URL, AUTH_JWT_SECRET, RESEND_API_KEY, APP_SECRET) are pushed
 # separately and never live in this file:
@@ -38,12 +39,16 @@ kill_timeout = '300s'
   worker = 'node --import tsx src/worker/index.ts'
 
 [env]
-  # The always-on web process owns the schedule trigger and wakes this worker,
-  # so the worker sleeps between jobs and bills only while it works. A Fly
-  # machine schedule was the alternative, and one silently stopped firing for
-  # five days on another project here — so the trigger lives in a process we
-  # control, and jobHealth makes a stalled pipeline visible either way.
-  SCHEDULE_TICKER_ENABLED = 'true'
+  # OFF BY DEFAULT (since 2026-11-07). Production sits fully stopped — database,
+  # worker and web — and data is collected on demand by scripts/collect.sh (or
+  # the Collect workflow), which starts the database, lets the worker run every
+  # due job, verifies them through jobHealth, and stops the database again.
+  #
+  # The ticker is off because web now starts on any request, and a stray hit on
+  # a stopped stack would otherwise wake the worker against a database that is
+  # down. Set this back to 'true' and min_machines_running to 1 below to return
+  # to always-on, where web owns the schedule and wakes the worker itself.
+  SCHEDULE_TICKER_ENABLED = 'false'
   NODE_ENV = 'production'
   API_PORT = '4000'
 
@@ -51,9 +56,10 @@ kill_timeout = '300s'
   processes = ['web']
   internal_port = 4000
   force_https = true
-  auto_stop_machines = 'suspend'
+  # Scales to zero: started by the first request, stopped again when idle.
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [[http_service.checks]]
     method = 'GET'
