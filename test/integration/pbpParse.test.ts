@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { db } from '~/lib/db.server'
+import { toStoredPayload } from '~/services/pbp/capturePbp.server'
 import { parseGame, parseStoredGames } from '~/services/pbp/parsePlays.server'
 
 // A real captured fixture: Calgary (112939) v Saskatchewan (106752), 2026
@@ -378,5 +379,82 @@ describe('fixture metadata', () => {
         expect(game.homeGeniusTeamId).toBe(CGY)
         expect(game.awayGeniusTeamId).toBeNull()
         expect(game.startedAt).toBeNull()
+    })
+})
+
+// The same MTL v OTT game as captured from the per-widget feeds that replaced
+// the old endpoint in 2026. Whatever the parser makes of it must match what it
+// makes of the old capture — otherwise the season would split at the switch.
+describe('parseGame on a payload from the new feeds', () => {
+    const NEW_FEED = JSON.stringify(
+        toStoredPayload(
+            JSON.parse(readFileSync('test/fixtures/pbp/feed-playbyplay-13419716.json', 'utf8')),
+            JSON.parse(readFileSync('test/fixtures/pbp/feed-scoreboard-13419716.json', 'utf8')),
+        ),
+    )
+
+    async function parseBoth() {
+        await db.team.create({
+            data: {
+                slug: 'montreal',
+                abbreviation: 'MTL',
+                name: 'Montreal',
+                geniusTeamId: '86680',
+            },
+        })
+        await db.team.create({
+            data: { slug: 'ottawa', abbreviation: 'OTT', name: 'Ottawa', geniusTeamId: '88019' },
+        })
+        const OLD_ID = MTL_OTT_ID
+        const NEW_ID = MTL_OTT_ID + 1
+        await db.game.create({ data: { id: OLD_ID, response: MTL_OTT, year: 2026 } })
+        await db.game.create({ data: { id: NEW_ID, response: NEW_FEED, year: 2026 } })
+        return { old: await parseGame(OLD_ID), now: await parseGame(NEW_ID), OLD_ID, NEW_ID }
+    }
+
+    it('produces the same drives and plays as the old capture', async () => {
+        const { old, now, NEW_ID } = await parseBoth()
+        expect(now).toEqual({ ...old, gameId: NEW_ID })
+    })
+
+    it('stores the same teams, kickoff and official final', async () => {
+        const { OLD_ID, NEW_ID } = await parseBoth()
+        const pick = {
+            homeGeniusTeamId: true,
+            awayGeniusTeamId: true,
+            homeScore: true,
+            awayScore: true,
+            startedAt: true,
+            ruleEra: true,
+        } as const
+        const old = await db.game.findUniqueOrThrow({ where: { id: OLD_ID }, select: pick })
+        const now = await db.game.findUniqueOrThrow({ where: { id: NEW_ID }, select: pick })
+        expect(now).toEqual(old)
+        expect(now).toMatchObject({ homeScore: 46, awayScore: 16 })
+    })
+
+    it('scores every play the same way', async () => {
+        const { OLD_ID, NEW_ID } = await parseBoth()
+        const rows = (gameId: number) =>
+            db.play.findMany({
+                where: { gameId },
+                orderBy: [{ timestamp: 'asc' }],
+                select: {
+                    number: true,
+                    type: true,
+                    subtype: true,
+                    points: true,
+                    isComplete: true,
+                    down: true,
+                    distance: true,
+                    yardLine: true,
+                },
+            })
+        const [old, now] = await Promise.all([rows(OLD_ID), rows(NEW_ID)])
+        expect(now).toHaveLength(old.length)
+        // Play 1-3 carries a start position Genius filled in after the old
+        // capture, so its down/distance/yard line legitimately differ.
+        const differing = now.filter((p, i) => JSON.stringify(p) !== JSON.stringify(old[i]))
+        expect(differing.length).toBeLessThanOrEqual(1)
     })
 })
