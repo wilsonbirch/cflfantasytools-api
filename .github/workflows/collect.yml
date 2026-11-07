@@ -1,0 +1,43 @@
+# Collect data on demand.
+#
+# Production is OFF by default (see fly.toml). This powers it up, lets the
+# worker run every scheduled job that is due, verifies through jobHealth that
+# they succeeded, and powers the database down again. A failed collection fails
+# this run, and GitHub emails about a failed run — which is the alerting a
+# silently empty capture never had.
+#
+# FLY_API_TOKEN must cover both apps: comma-join a deploy token for
+# cflfantasytools-api and one for cflfantasytools-db.
+name: Collect
+
+on:
+    workflow_dispatch:
+        inputs:
+            keep_db:
+                description: Leave the database running afterwards
+                type: boolean
+                default: false
+    # In season, uncomment to collect on a cadence rather than by hand. Game
+    # Zone salaries and projections are perishable — only the current value is
+    # served — so price history is only as fine as this cadence.
+    # schedule:
+    #     - cron: '23 */6 * * *'
+
+concurrency:
+    group: production
+    cancel-in-progress: false
+
+jobs:
+    collect:
+        runs-on: ubuntu-latest
+        timeout-minutes: 60
+        steps:
+            - uses: actions/checkout@v7
+            # Pinned to a SHA for the same reason as in deploy.yml.
+            - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+
+            - name: Collect
+              env:
+                  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+                  KEEP_DB: ${{ inputs.keep_db && '1' || '0' }}
+              run: scripts/collect.sh run
