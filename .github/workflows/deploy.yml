@@ -14,8 +14,8 @@
 # Production is OFF by default (see fly.toml), and that release command needs
 # the database. So the database is started for the deploy and stopped again
 # afterwards — but only if it was off to begin with, so a deploy never powers
-# down a database someone is using. FLY_API_TOKEN must therefore cover the
-# database app too: comma-join a deploy token for each app.
+# down a database someone is using. That needs FLY_DB_TOKEN, a deploy token for
+# the database app, alongside the api's FLY_API_TOKEN.
 name: Deploy
 
 on:
@@ -45,6 +45,7 @@ jobs:
               id: db
               env:
                   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+                  FLY_DB_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
               run: |
                   echo "was=$(scripts/collect.sh db-state)" >> "$GITHUB_OUTPUT"
                   scripts/collect.sh db-up
@@ -71,4 +72,5 @@ jobs:
               if: always() && steps.db.outputs.was == 'stopped'
               env:
                   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+                  FLY_DB_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
               run: scripts/collect.sh db-down

@@ -16,7 +16,9 @@
 # Env:
 #   KEEP_DB=1               leave the database running after `run` (for debugging)
 #   WORKER_TIMEOUT_MIN=45   give up waiting for the worker after this long
-#   FLY_API_TOKEN           in CI; must cover BOTH apps (comma-join two deploy tokens)
+#   FLY_API_TOKEN           in CI: deploy token for the api app
+#   FLY_DB_TOKEN            in CI: deploy token for the database app
+#   (Locally, leave both unset and flyctl uses your `fly auth login`.)
 #
 # Why a run is verified through jobHealth rather than the worker's exit code:
 # the worker exits 0 after draining even if a job failed (failure is recorded
@@ -36,7 +38,17 @@ FLY=${FLY:-flyctl}
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%SZ)" "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
-machines_json() { "$FLY" machines list -a "$1" --json; }
+# Run flyctl with the token for the app it touches. Each token is a deploy
+# token scoped to one app, so a leaked database token cannot deploy the api and
+# vice versa. With neither set (a workstation), flyctl uses the login.
+fly_for() {
+    local app=$1 token
+    shift
+    if [ "$app" = "$DB_APP" ]; then token=${FLY_DB_TOKEN:-}; else token=${FLY_API_TOKEN:-}; fi
+    if [ -n "$token" ]; then FLY_API_TOKEN=$token "$FLY" "$@"; else "$FLY" "$@"; fi
+}
+
+machines_json() { fly_for "$1" machines list -a "$1" --json; }
 
 db_ids() { machines_json "$DB_APP" | jq -r '.[].id'; }
 
@@ -65,7 +77,7 @@ db_up() {
     for id in $(db_ids); do
         if [ "$(machine_state "$DB_APP" "$id")" != started ]; then
             log "starting database machine $id"
-            "$FLY" machine start "$id" -a "$DB_APP" >/dev/null
+            fly_for "$DB_APP" machine start "$id" -a "$DB_APP" >/dev/null
         fi
     done
     local deadline=$(( $(date +%s) + DB_TIMEOUT_SEC ))
@@ -80,7 +92,7 @@ db_down() {
     for id in $(db_ids); do
         if [ "$(machine_state "$DB_APP" "$id")" = started ]; then
             log "stopping database machine $id"
-            "$FLY" machine stop "$id" -a "$DB_APP" >/dev/null
+            fly_for "$DB_APP" machine stop "$id" -a "$DB_APP" >/dev/null
         fi
     done
 }
@@ -94,7 +106,7 @@ workers_stopped() {
 
 stop_workers() {
     for id in $(worker_ids); do
-        "$FLY" machine stop "$id" -a "$APP" >/dev/null || true
+        fly_for "$APP" machine stop "$id" -a "$APP" >/dev/null || true
     done
 }
 
@@ -126,7 +138,7 @@ run() {
     for id in $ids; do
         if [ "$(machine_state "$APP" "$id")" != started ]; then
             log "starting worker machine $id"
-            "$FLY" machine start "$id" -a "$APP" >/dev/null
+            fly_for "$APP" machine start "$id" -a "$APP" >/dev/null
         fi
     done
 
@@ -181,6 +193,11 @@ cleanup() {
 
 command -v jq >/dev/null || die "jq is required"
 command -v "$FLY" >/dev/null || die "$FLY is required"
+# In CI the api token alone would fall through to the database calls and fail
+# with an opaque auth error; say what is actually missing.
+if [ -n "${FLY_API_TOKEN:-}" ] && [ -z "${FLY_DB_TOKEN:-}" ]; then
+    die "FLY_API_TOKEN is set but FLY_DB_TOKEN is not — the database app needs its own token"
+fi
 
 case "${1:-}" in
     run) run ;;

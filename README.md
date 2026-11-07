@@ -164,13 +164,14 @@ answers `/health` but every query fails. Its schedule ticker is off
 against a stopped database. Deploys start the database for the release-command
 migration and stop it again if it was off.
 
-`FLY_API_TOKEN` in GitHub must cover **both** apps — comma-join a deploy token
-for each:
+GitHub holds one deploy token per app: `FLY_API_TOKEN` for the api (the
+existing deploy secret) and `FLY_DB_TOKEN` for the database. Each is scoped to
+its own app, and the script hands each flyctl call the token for the app it
+touches. Locally, leave both unset and your `fly auth login` is used.
 
 ```bash
-fly tokens create deploy -a cflfantasytools-api
 fly tokens create deploy -a cflfantasytools-db
-gh secret set FLY_API_TOKEN -R wilsonbirch/cflfantasytools-api   # paste "<api>,<db>"
+gh secret set FLY_DB_TOKEN -R wilsonbirch/cflfantasytools-api   # paste at the prompt
 ```
 
 ⚠️ **The feeds serve the current season only.** Off-mode trades away anything

@@ -6,8 +6,8 @@
 # this run, and GitHub emails about a failed run — which is the alerting a
 # silently empty capture never had.
 #
-# FLY_API_TOKEN must cover both apps: comma-join a deploy token for
-# cflfantasytools-api and one for cflfantasytools-db.
+# Needs two secrets, one deploy token per app: FLY_API_TOKEN for
+# cflfantasytools-api and FLY_DB_TOKEN for cflfantasytools-db.
 name: Collect
 
 on:
@@ -39,5 +39,6 @@ jobs:
             - name: Collect
               env:
                   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+                  FLY_DB_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
                   KEEP_DB: ${{ inputs.keep_db && '1' || '0' }}
               run: scripts/collect.sh run
