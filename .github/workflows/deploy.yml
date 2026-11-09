@@ -24,8 +24,7 @@ on:
     workflow_dispatch:
 
 # Never let two deploys overlap, and never cancel one mid-roll — a half-applied
-# release is worse than a queued one. Shared with the Collect workflow: both
-# power the database up and down, and must not do it under each other.
+# release is worse than a queued one.
 concurrency:
     group: production
     cancel-in-progress: false

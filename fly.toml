@@ -40,8 +40,8 @@ kill_timeout = '300s'
 
 [env]
   # OFF BY DEFAULT (since 2026-11-07). Production sits fully stopped — database,
-  # worker and web — and data is collected on demand by scripts/collect.sh (or
-  # the Collect workflow), which starts the database, lets the worker run every
+  # worker and web — and data is collected on demand from a workstation by
+  # scripts/collect.sh, which starts the database, lets the worker run every
   # due job, verifies them through jobHealth, and stops the database again.
   #
   # The ticker is off because web now starts on any request, and a stray hit on
@@ -49,6 +49,11 @@ kill_timeout = '300s'
   # down. Set this back to 'true' and min_machines_running to 1 below to return
   # to always-on, where web owns the schedule and wakes the worker itself.
   SCHEDULE_TICKER_ENABLED = 'false'
+  # The worker enqueues due jobs once at boot and then only drains. Re-checking
+  # the schedule mid-session (the always-on default) re-enqueued the 30-minute
+  # depth-chart sweep forever, so a collection never finished. Remove to go
+  # back to always-on.
+  WORKER_SCHEDULE_RECHECK_MS = '0'
   NODE_ENV = 'production'
   API_PORT = '4000'
 

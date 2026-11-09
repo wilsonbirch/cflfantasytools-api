@@ -30,7 +30,18 @@ logger.info(fileName, '🛠 worker ready')
 const requeued = await jobResetOrphaned()
 if (requeued > 0) logger.info(fileName, `requeued ${requeued} orphaned jobs`)
 
-await runWorkerSession({ handlers: JOB_HANDLERS, idleExitMs, isStopping: () => stopping })
+// 0 = enqueue due schedules once, at boot, and never again this session — the
+// off-by-default mode, where a session IS one collection run.
+const scheduleCheckMs = process.env.WORKER_SCHEDULE_RECHECK_MS
+    ? Number(process.env.WORKER_SCHEDULE_RECHECK_MS)
+    : 60_000
+
+await runWorkerSession({
+    handlers: JOB_HANDLERS,
+    idleExitMs,
+    scheduleCheckMs,
+    isStopping: () => stopping,
+})
 
 await db.$disconnect()
 process.exit(0)

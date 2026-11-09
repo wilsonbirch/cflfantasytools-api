@@ -159,3 +159,21 @@ describe('recurring schedules', () => {
         expect(await db.job.count({ where: { kind: 'gamezone-sync' } })).toBe(2)
     })
 })
+
+describe('runWorkerSession', () => {
+    it('with schedule re-checks off, enqueues due rules once at boot, drains, and exits', async () => {
+        // The off-by-default collection: a rule due every millisecond would be
+        // re-enqueued forever if the session kept re-checking the schedule.
+        const { runWorkerSession } = await import('~/worker/loop')
+        let runs = 0
+        await runWorkerSession({
+            handlers: { 'always-due': async () => void (runs += 1) },
+            schedules: [{ kind: 'always-due', everyMs: 1 }],
+            scheduleCheckMs: 0,
+            idleExitMs: 50,
+            pollMs: 10,
+        })
+        expect(runs).toBe(1)
+        expect(await db.job.count({ where: { kind: 'always-due' } })).toBe(1)
+    }, 10_000)
+})

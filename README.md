@@ -144,17 +144,18 @@ sites that need JS.
 ### Off by default: collect on demand
 
 Since 2026-11-07 production sits **fully stopped** — database, worker and web —
-so the standing cost is the database volume. Data is collected by powering up,
-running every due job, and powering down:
+so the standing cost is the database volume. Data is collected from a
+workstation, with your `fly auth login`, by powering up, running every due job,
+and powering down:
 
 ```bash
-scripts/collect.sh run          # or: GitHub → Actions → Collect → Run workflow
+scripts/collect.sh run
 ```
 
 That starts the database, starts the worker (which enqueues every scheduled job
 that is due on boot, drains the queue, and idle-exits), checks through
 `jobHealth` that each due job **succeeded during this run**, and stops the
-database. It exits non-zero otherwise, so a failed Collect run emails you.
+database. It exits non-zero otherwise, naming the jobs that failed.
 `KEEP_DB=1` leaves the database up; `scripts/collect.sh db-up` / `db-down`
 power it by hand.
 
@@ -164,10 +165,15 @@ answers `/health` but every query fails. Its schedule ticker is off
 against a stopped database. Deploys start the database for the release-command
 migration and stop it again if it was off.
 
-GitHub holds one deploy token per app: `FLY_API_TOKEN` for the api (the
-existing deploy secret) and `FLY_DB_TOKEN` for the database. Each is scoped to
-its own app, and the script hands each flyctl call the token for the app it
-touches. Locally, leave both unset and your `fly auth login` is used.
+Done by hand, that is: `fly machine start` the database and the worker, wait
+for the worker to stop itself, `fly machine stop` the database. Starting only
+`web` collects nothing — with the ticker off, the worker is what runs jobs.
+
+The deploy workflow uses the same script to power the database for the
+migration, so GitHub holds one deploy token per app: `FLY_API_TOKEN` for the api
+(the existing deploy secret) and `FLY_DB_TOKEN` for the database. Each is scoped
+to its own app, and the script hands each flyctl call the token for the app it
+touches. Locally, leave both unset and your login is used.
 
 ```bash
 fly tokens create deploy -a cflfantasytools-db
@@ -177,9 +183,9 @@ gh secret set FLY_DB_TOKEN -R wilsonbirch/cflfantasytools-api   # paste at the p
 ⚠️ **The feeds serve the current season only.** Off-mode trades away anything
 that is not collected while it is live: Game Zone salaries and projections keep
 only their current value, and play-by-play disappears when the season rolls
-over. In season, collect at least weekly — or uncomment the `schedule` in
-`.github/workflows/collect.yml`. The 2025 season and September–October 2026 were
-both lost to capture that stopped without anyone noticing.
+over. In season, collect at least weekly. The 2025 season and
+September–October 2026 were both lost to capture that stopped without anyone
+noticing.
 
 To return to always-on: `SCHEDULE_TICKER_ENABLED = 'true'` and
 `min_machines_running = 1` in `fly.toml`, then deploy and start the database.
