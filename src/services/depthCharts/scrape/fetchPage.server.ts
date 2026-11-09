@@ -1,6 +1,7 @@
 import { parseHTML } from 'linkedom'
 import { logger } from '~/lib/logger.server'
 import type { Doc } from './extractors'
+import { inlineNuxtFragments } from './nuxtFragments'
 
 const fileName = 'services/depthCharts/scrape/fetchPage'
 
@@ -15,7 +16,7 @@ export async function fetchPage(
     fetchImpl: typeof fetch = fetch,
 ): Promise<Doc> {
     const html = requiresBrowser ? await renderWithBrowser(url) : await fetchHtml(url, fetchImpl)
-    return parseHTML(html).document as unknown as Doc
+    return parseHTML(inlineNuxtFragments(html)).document as unknown as Doc
 }
 
 async function fetchHtml(url: string, fetchImpl: typeof fetch): Promise<string> {

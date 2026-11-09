@@ -100,6 +100,46 @@ describe('archiving on sweep', () => {
     })
 })
 
+describe('re-hosted charts', () => {
+    it('merges a chart that reappears under a new URL into the original, without an alert', async () => {
+        // The 2026 platform move gave every club PDF a new URL. Identity is the
+        // href, so each old chart came back looking new; its bytes did not change.
+        const team = await seedTeam()
+        await seedWithOneNewChart(team, serve())
+        await checkTeam(team.id, 2026, serve())
+        const original = await db.depthChart.findFirstOrThrow()
+        const oldHref = original.value
+        const newHref = 'https://assets.ctfassets.net/space/asset/rehosted.pdf'
+
+        const rehosted = CGY_PAGE.split(oldHref).join(newHref)
+        expect(rehosted).not.toBe(CGY_PAGE)
+
+        const r = await checkTeam(team.id, 2026, serve(PDF_A, rehosted))
+
+        expect(r.addedCount).toBe(1)
+        const charts = await db.depthChart.findMany({ include: { files: true } })
+        expect(charts).toHaveLength(1)
+        expect(charts[0].id).toBe(original.id)
+        expect(charts[0].value).toBe(newHref)
+        expect(charts[0].files).toHaveLength(1)
+        expect(await db.job.count({ where: { kind: 'chart-alert' } })).toBe(1) // the first, genuine one
+    })
+
+    it('keeps two charts that are both new in the same run, even with identical bytes', async () => {
+        const team = await seedTeam()
+        await checkTeam(team.id, 2026, serve())
+        const list = await db.depthChartList.findFirstOrThrow()
+        const items = list.value as { title: string; href: string }[]
+        await db.depthChartList.update({
+            where: { id: list.id },
+            data: { value: items.slice(0, -2) },
+        })
+
+        await checkTeam(team.id, 2026, serve())
+        expect(await db.depthChart.count()).toBe(2)
+    })
+})
+
 describe('archiveChartFiles — checksum change detection', () => {
     async function seedChart(team: { id: number }, n = 1) {
         const list = await db.depthChartList.create({ data: { teamId: team.id, year: 2026 } })

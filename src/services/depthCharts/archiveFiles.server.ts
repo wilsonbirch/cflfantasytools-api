@@ -24,6 +24,11 @@ export type ArchiveSummary = {
     archived: number
     /** Charts whose bytes changed under an unchanged href. */
     revised: number
+    /**
+     * "New" charts that turned out to be an already-archived chart under a new
+     * URL — the same PDF re-hosted. Merged into the original, not stored twice.
+     */
+    rehosted: number
     failed: number
 }
 
@@ -65,7 +70,7 @@ export async function archiveChartFiles(
     fetchImpl: typeof fetch = fetch,
     now = new Date(),
 ): Promise<ArchiveSummary> {
-    const summary: ArchiveSummary = { fetched: 0, archived: 0, revised: 0, failed: 0 }
+    const summary: ArchiveSummary = { fetched: 0, archived: 0, revised: 0, rehosted: 0, failed: 0 }
 
     const charts = await db.depthChart.findMany({
         where: { teamId, year },
@@ -117,6 +122,46 @@ export async function archiveChartFiles(
         if (known) {
             await db.depthChartFile.update({ where: { id: known.id }, data: { checkedAt: now } })
             continue
+        }
+
+        // A chart archived for the first time whose bytes already belong to
+        // another of this club's charts is that chart, re-hosted. When the CFL
+        // moved every club onto one platform in 2026 each PDF got a new URL, and
+        // since identity is the href, every old chart came back looking new.
+        // Keep the original row — its history, parse and alignment — point it at
+        // the live URL, and drop the duplicate.
+        //
+        // Only a chart archived in an EARLIER run counts as the original: two
+        // charts that are both new in this run are two postings, whatever bytes
+        // they share.
+        if (!latest) {
+            const original = await db.depthChartFile.findFirst({
+                where: {
+                    sha256: hash,
+                    fetchedAt: { lt: now },
+                    DepthChart: { teamId, year, id: { not: chart.id } },
+                },
+                select: { id: true, depthChartId: true },
+            })
+            if (original) {
+                await db.$transaction([
+                    db.depthChart.update({
+                        where: { id: original.depthChartId },
+                        data: { value: chart.value },
+                    }),
+                    db.depthChartFile.update({
+                        where: { id: original.id },
+                        data: { checkedAt: now },
+                    }),
+                    db.depthChart.delete({ where: { id: chart.id } }),
+                ])
+                summary.rehosted += 1
+                logger.info(
+                    fileName,
+                    `chart ${chart.id}: re-host of chart ${original.depthChartId}; merged`,
+                )
+                continue
+            }
         }
 
         await db.depthChartFile.create({

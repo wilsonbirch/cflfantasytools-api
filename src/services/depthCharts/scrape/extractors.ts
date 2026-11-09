@@ -14,6 +14,9 @@
 export type DepthChartItem = {
     title: string
     href: string
+    // articleList only: the article the PDF was found in. Lets a later sweep
+    // reuse the resolved href instead of re-fetching every article.
+    page?: string
 }
 
 // A minimal structural view of the DOM, so these work identically under
@@ -26,9 +29,16 @@ type El = {
 }
 export type Doc = Pick<El, 'querySelector' | 'querySelectorAll'>
 
-export type Strategy = 'tableRowCells' | 'tableCellLookback' | 'cardList'
+export type Strategy =
+    'tableRowCells' | 'tableCellLookback' | 'cardList' | 'articleList' | 'composite'
 
-export const STRATEGIES: readonly Strategy[] = ['tableRowCells', 'tableCellLookback', 'cardList']
+export const STRATEGIES: readonly Strategy[] = [
+    'tableRowCells',
+    'tableCellLookback',
+    'cardList',
+    'articleList',
+    'composite',
+]
 
 export const isStrategy = (v: unknown): v is Strategy =>
     typeof v === 'string' && (STRATEGIES as readonly string[]).includes(v)
@@ -145,12 +155,35 @@ function extractTableCellLookback(
 export type CardListConfig = {
     cardSelector: string
     titleSelectors: string[]
+    // Which link in the card is the chart, matched (case-insensitively) on the
+    // link's text. Without it the card's first link is taken — which on the
+    // 2026 club platform is "Game Preview", not the chart. Hamilton's cards
+    // also link the OPPONENT's chart and game notes, so this must be specific.
+    linkTextMatch?: string
+    // Alternatively match on the normalized href — for a club whose button
+    // text varies week to week (Ottawa: "Download Depth Chart", "Download",
+    // "Depth Chart") but whose only PDF in the card is the chart.
+    linkHrefMatch?: string
 }
 
 function extractCardList(doc: Doc, cfg: CardListConfig, origin: string): DepthChartItem[] {
     const out: DepthChartItem[] = []
+    const linkText = cfg.linkTextMatch ? new RegExp(cfg.linkTextMatch, 'i') : null
+    const linkHref = cfg.linkHrefMatch ? new RegExp(cfg.linkHrefMatch, 'i') : null
+    const isChartLink = (a: El): boolean => {
+        if (linkText && !linkText.test(text(a))) return false
+        if (linkHref) {
+            const href = normalizeHref(origin, a.getAttribute('href') ?? '')
+            if (!href || !linkHref.test(href)) return false
+        }
+        return true
+    }
     for (const card of doc.querySelectorAll(cfg.cardSelector)) {
-        const rawHref = card.querySelector('a')?.getAttribute('href')
+        const link =
+            linkText || linkHref
+                ? ([...card.querySelectorAll('a')].find(isChartLink) ?? null)
+                : card.querySelector('a')
+        const rawHref = link?.getAttribute('href')
         if (!rawHref) continue
         const href = normalizeHref(origin, rawHref)
         if (!href) continue
@@ -159,6 +192,50 @@ function extractCardList(doc: Doc, cfg: CardListConfig, origin: string): DepthCh
     }
     return out
 }
+
+// --- articleList: clubs that post each chart as its own article -----------
+// Edmonton, from 2026: the chart page is a list of articles, one per game, and
+// the PDF is linked from inside each article. This pass yields the ARTICLES;
+// resolveArticlePdfs() then fetches each new one and swaps in its PDF, since
+// that needs the network and every function in this file is pure.
+export type ArticleListConfig = {
+    // Matched against the normalized article URL.
+    linkHrefMatch: string
+    // Element inside the link that holds the title; falls back to the link text.
+    titleSelector?: string
+    // Matched against links inside an article to find the chart PDF.
+    pdfHrefMatch?: string
+}
+
+function extractArticleList(doc: Doc, cfg: ArticleListConfig, origin: string): DepthChartItem[] {
+    const out: DepthChartItem[] = []
+    const match = new RegExp(cfg.linkHrefMatch, 'i')
+    for (const a of doc.querySelectorAll('a')) {
+        const rawHref = a.getAttribute('href')
+        if (!rawHref) continue
+        const href = normalizeHref(origin, rawHref)
+        if (!href || !match.test(href)) continue
+        const titleEl = cfg.titleSelector ? a.querySelector(cfg.titleSelector) : null
+        out.push({ title: normalizeTitle([text(titleEl ?? a)]), href, page: href })
+    }
+    return out
+}
+
+/** The chart PDF linked from an article page, or null if it has none. */
+export function findArticlePdf(doc: Doc, cfg: ArticleListConfig, origin: string): string | null {
+    const match = new RegExp(cfg.pdfHrefMatch ?? '\\.pdf$', 'i')
+    for (const a of doc.querySelectorAll('a')) {
+        const href = normalizeHref(origin, a.getAttribute('href') ?? '')
+        if (href && match.test(href)) return href
+    }
+    return null
+}
+
+// --- composite: a page that needs more than one strategy -------------------
+// Hamilton, from 2026: the season's charts sit in a table, but the newest game
+// is only on its own card. Results are unioned in order; a chart found by both
+// keeps the first part's title, and the href dedupe below collapses it.
+export type CompositeConfig = { parts: { strategy: Strategy; config: unknown }[] }
 
 /**
  * Run a club's configured strategy over its page.
@@ -183,6 +260,16 @@ export function extract(
             break
         case 'cardList':
             items = extractCardList(doc, cfg as unknown as CardListConfig, origin)
+            break
+        case 'articleList':
+            items = extractArticleList(doc, cfg as unknown as ArticleListConfig, origin)
+            break
+        case 'composite':
+            items = ((cfg as unknown as CompositeConfig).parts ?? [])
+                // One level only: a part that is itself composite is ignored
+                // rather than recursed into.
+                .filter((p) => isStrategy(p.strategy) && p.strategy !== 'composite')
+                .flatMap((p) => extract(doc, p.strategy, p.config, origin))
             break
     }
     const seen = new Set<string>()

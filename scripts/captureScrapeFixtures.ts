@@ -11,24 +11,47 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { TEAMS } from '~/data/teams'
+import type { Doc } from '~/services/depthCharts/scrape/extractors'
 import { fetchPage } from '~/services/depthCharts/scrape/fetchPage.server'
 
 const DIR = 'test/fixtures/depth-charts'
 mkdirSync(DIR, { recursive: true })
+
+type Node = { outerHTML: string; getAttribute(name: string): string | null }
+type Part = { strategy: string; config: unknown }
+
+/** The elements a strategy reads — everything else on the page is noise. */
+function keptNodes(doc: Doc, strategy: string, config: unknown): Node[] {
+    const all = (sel: string) => [...(doc.querySelectorAll(sel) as unknown as Iterable<Node>)]
+    switch (strategy) {
+        case 'cardList':
+            return all((config as { cardSelector: string }).cardSelector)
+        case 'articleList': {
+            const match = new RegExp((config as { linkHrefMatch: string }).linkHrefMatch, 'i')
+            return all('a').filter((a) => match.test(a.getAttribute('href') ?? ''))
+        }
+        case 'composite':
+            return [
+                ...new Set(
+                    (config as { parts: Part[] }).parts.flatMap((p) =>
+                        keptNodes(doc, p.strategy, p.config),
+                    ),
+                ),
+            ]
+        default:
+            return all('table')
+    }
+}
 
 const only = process.argv[2]?.toUpperCase()
 const targets = only ? TEAMS.filter((t) => t.abbreviation === only) : TEAMS
 
 for (const team of targets) {
     try {
+        // fetchPage inlines payload-only HTML (Hamilton's season table), so the
+        // fixture holds exactly what the extractor saw.
         const doc = await fetchPage(team.depthChartUrl, team.requiresBrowser)
-        const selector =
-            team.strategy === 'cardList'
-                ? ((team.config as { cardSelector: string }).cardSelector ?? '.depth-card')
-                : 'table'
-        const nodes = [
-            ...(doc.querySelectorAll(selector) as unknown as Iterable<{ outerHTML: string }>),
-        ]
+        const nodes = keptNodes(doc, team.strategy, team.config)
         const html =
             `<!-- ${team.abbreviation} — trimmed from ${team.depthChartUrl} -->\n` +
             `<!-- captured ${new Date().toISOString().slice(0, 10)}; ${nodes.length} node(s) -->\n` +
