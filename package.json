@@ -40,11 +40,11 @@
         "graphql": "^16.11.0",
         "graphql-scalars": "^2.0.1",
         "graphql-yoga": "^5.24.6",
-        "jose": "^6.2.13",
-        "linkedom": "^0.18.14",
+        "jose": "^6.2.15",
+        "linkedom": "^0.18.15",
         "pg": "^8.23.1",
         "puppeteer": "^25.16.0",
-        "resend": "^6.34.1",
+        "resend": "^6.37.0",
         "dotenv": "^17.2.0",
         "prisma": "^7.10.1",
         "tsx": "^4.23.15",
@@ -62,7 +62,7 @@
         "prettier": "^3.9.10",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.72.0",
-        "vite": "^8.3.5",
+        "vite": "^8.3.6",
         "vitest": "^4.1.6"
     }
 }
