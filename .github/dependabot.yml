@@ -6,6 +6,16 @@ updates:
           interval: 'weekly'
       open-pull-requests-limit: 10
       groups:
+          # Scoped packages are listed BY NAME, wildcard after. Dependabot ranks
+          # an exact name above minor-and-patch but a '@scope/*' wildcard below
+          # it, so a member matched only by the wildcard gets pulled out into
+          # minor-and-patch. Job log, 2026-11-10: "Skipping @vitest/coverage-v8
+          # for group 'vitest' - belongs to more specific group 'minor-and-patch'"
+          # (vitest 5 and coverage-v8 5 then came as two PRs that each fail
+          # `npm ci`; in web, react-router 8 split from @react-router/*). The
+          # wildcard stays to catch a new package's major, which minor-and-patch
+          # never claims. Add new scoped packages here by name.
+          #
           # Coupled stacks come FIRST — a group earlier in this list wins the
           # package, and minor-and-patch below would otherwise claim their
           # minor/patch bumps and split the stack across PRs.
@@ -22,6 +32,9 @@ updates:
                   - 'graphql'
                   - 'graphql-yoga'
                   - 'graphql-scalars'
+                  - '@pothos/core'
+                  - '@pothos/plugin-errors'
+                  - '@pothos/plugin-prisma'
                   - '@pothos/*'
               update-types:
                   - 'major'
@@ -34,6 +47,8 @@ updates:
           prisma:
               patterns:
                   - 'prisma'
+                  - '@prisma/adapter-pg'
+                  - '@prisma/client'
                   - '@prisma/*'
               update-types:
                   - 'major'
@@ -44,6 +59,7 @@ updates:
           vitest:
               patterns:
                   - 'vitest'
+                  - '@vitest/coverage-v8'
                   - '@vitest/*'
               update-types:
                   - 'major'
