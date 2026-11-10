@@ -69,7 +69,17 @@ updates:
                   - 'patch'
           # Everything else non-major in one PR to cut noise. Majors still
           # arrive individually so they get read.
+          # patterns: ['*'] is load-bearing. Dependabot scores a group with NO
+          # patterns at 500 for every package, above a '@scope/*' wildcard (~100),
+          # so without it this group pulled @vitest/coverage-v8, @react-router/*,
+          # @pothos/* etc. out of their coupled groups, majors included (job log
+          # 2026-11-10: "Skipping @vitest/coverage-v8 for group 'vitest' - belongs
+          # to more specific group 'minor-and-patch'"). A bare '*' scores 1, so
+          # every coupled group above wins. Source: dependabot-core
+          # updater/lib/dependabot/updater/pattern_specificity_calculator.rb.
           minor-and-patch:
+              patterns:
+                  - '*'
               update-types:
                   - 'minor'
                   - 'patch'
