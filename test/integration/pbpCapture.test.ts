@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { db } from '~/lib/db.server'
+import { isPermanentError } from '~/lib/jobErrors.server'
 import { capturePbp } from '~/services/pbp/capturePbp.server'
 
 // Two played fixtures (a preseason game and Week 1) and one not yet kicked off,
@@ -208,6 +209,42 @@ describe('capturePbp', () => {
         await expect(capture({ '1001': down, '1002': down })).rejects.toThrow(
             /every fixture failed/,
         )
+    })
+
+    it('makes the all-failed throw permanent only when every failure was a 4xx', async () => {
+        await seed()
+        const failure = async (feeds: Record<string, Response>) =>
+            capture(feeds).then(
+                () => null,
+                (err: unknown) => err,
+            )
+
+        // The feed routes moved: every fixture 404s, and retrying asks the same question.
+        const gone = new Response('not found', { status: 404 })
+        const moved = await failure({ '1001': gone, '1002': gone })
+        expect(String(moved)).toMatch(/every fixture failed/)
+        expect(isPermanentError(moved)).toBe(true)
+
+        // A 5xx anywhere among the failures keeps it retryable.
+        const down = new Response('{"code":"BN001"}', { status: 500 })
+        expect(isPermanentError(await failure({ '1001': down, '1002': down }))).toBe(false)
+        expect(isPermanentError(await failure({ '1001': gone, '1002': down }))).toBe(false)
+    })
+
+    it('keeps a 4xx mixed with a non-HTTP failure retryable', async () => {
+        await seed()
+        // An unknown fixture answers 200 with status UNAVAILABLE: a plain,
+        // unclassified failure, so the run as a whole stays transient.
+        const unavailable = JSON.stringify({ data: { status: { status: 'UNAVAILABLE' } } })
+        const err = await capture({
+            '1001': new Response('not found', { status: 404 }),
+            '1002': { pbp: unavailable, scoreboard: unavailable },
+        }).then(
+            () => null,
+            (e: unknown) => e,
+        )
+        expect(String(err)).toMatch(/every fixture failed/)
+        expect(isPermanentError(err)).toBe(false)
     })
 
     it('throws when the schedule yields no fixtures', async () => {

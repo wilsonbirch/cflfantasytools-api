@@ -4,6 +4,7 @@ import { parseStoredGames } from '~/services/pbp/parsePlays.server'
 import { refitAndApply } from '~/services/epa/fitEp.server'
 import { runProjectionsFit } from '~/services/projections/fitProjections.server'
 import { checkTeam, sweepAllTeams } from '~/services/depthCharts/checkTeam.server'
+import { PermanentError } from '~/lib/jobErrors.server'
 import { currentSeasonYear } from '~/lib/season.server'
 
 export type JobHandler = (payload: unknown) => Promise<void>
@@ -53,15 +54,22 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     },
     'depth-chart-team': async (payload) => {
         const { teamId, year } = asRecord(payload)
-        if (typeof teamId !== 'number') throw new Error('depth-chart-team requires a teamId')
+        if (typeof teamId !== 'number') {
+            throw new PermanentError('depth-chart-team requires a teamId')
+        }
         const result = await checkTeam(
             teamId,
             typeof year === 'number' ? year : currentSeasonYear(),
         )
         // A scrape that could not load the page is an outage, so fail the job and
-        // let the retry ladder / Job table show it. REJECTED stays non-fatal: that
-        // is the data-quality guard refusing a parse, not a site being down.
-        if (result.status === 'FAILED') throw new Error(`team ${teamId}: ${result.error}`)
+        // let the retry ladder / Job table show it — straight to FAILED when the
+        // page answered 4xx or the source is misconfigured, since retrying cannot
+        // help. REJECTED stays non-fatal: that is the data-quality guard refusing
+        // a parse, not a site being down.
+        if (result.status === 'FAILED') {
+            const message = `team ${teamId}: ${result.error}`
+            throw result.permanent ? new PermanentError(message) : new Error(message)
+        }
     },
     // Emails the club's subscribers about a new or replaced depth chart. Its
     // own job so a Resend outage retries without re-scraping; the batchKey
@@ -69,7 +77,7 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     'chart-alert': async (payload) => {
         const { teamId, scrapeRunId, added, revised } = asRecord(payload)
         if (typeof teamId !== 'number' || typeof scrapeRunId !== 'number') {
-            throw new Error('chart-alert requires teamId and scrapeRunId')
+            throw new PermanentError('chart-alert requires teamId and scrapeRunId')
         }
         const { sendChartAlert } = await import('~/services/email/chartAlert.server')
         const result = await sendChartAlert(
@@ -78,6 +86,13 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
             typeof added === 'number' ? added : 0,
             typeof revised === 'number' ? revised : 0,
         )
-        if (result.failed > 0) throw new Error(`${result.failed} of ${result.queued} sends failed`)
+        if (result.failed > 0) {
+            const message = `${result.failed} of ${result.queued} sends failed`
+            // Every failed chunk was refused with a 4xx (bad key, unverified
+            // domain, invalid recipient): the same request would be refused again.
+            throw result.permanentFailed === result.failed
+                ? new PermanentError(message)
+                : new Error(message)
+        }
     },
 }

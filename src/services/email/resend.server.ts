@@ -4,6 +4,8 @@
 // Env-gated: without RESEND_API_KEY + RESEND_FROM_EMAIL nothing sends, so dev
 // machines and CI can run every code path with sending off.
 
+import { HttpStatusError } from '~/lib/jobErrors.server'
+
 const BATCH_URL = 'https://api.resend.com/emails/batch'
 
 /** Resend's batch endpoint takes at most 100 emails per request. */
@@ -51,7 +53,7 @@ export async function sendBatch(
     })
     if (!res.ok) {
         const body = await res.text().catch(() => '')
-        throw new Error(`Resend ${res.status}: ${body.slice(0, 300)}`)
+        throw new HttpStatusError(res.status, `Resend ${res.status}: ${body.slice(0, 300)}`)
     }
     const parsed = (await res.json()) as { data?: { id?: string }[] }
     return (parsed.data ?? []).map((d) => d.id ?? '')

@@ -8,6 +8,7 @@ import {
     jobMarkSucceeded,
     jobPruneFinished,
 } from '~/dao/job.server'
+import { isPermanentError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 import type { JobHandler } from './handlers.server'
 import { dueScheduledKinds, SCHEDULES, type ScheduleRule } from './schedule.server'
@@ -22,6 +23,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * Claim and run due jobs until the queue is empty (or a stop is requested).
  * A handler failure is contained to its job: log + jobMarkFailed
  * (which schedules the retry or lands it FAILED); the loop moves on.
+ *
+ * A failure the handler raised as permanent (see lib/jobErrors — a 4xx, a
+ * payload nothing can act on) skips the ladder and lands FAILED on this
+ * attempt: retrying a 404 five times with backoff kept an off-mode collection
+ * open ~30 minutes to end in the same FAILED row.
  */
 export async function tickOnce(
     handlers: Record<string, JobHandler>,
@@ -44,6 +50,15 @@ export async function tickOnce(
             logger.info(fileName, `job ${job.id} (${job.kind}) succeeded`)
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err)
+            if (isPermanentError(err)) {
+                logger.error(
+                    fileName,
+                    `job ${job.id} (${job.kind}) failed permanently on attempt ${job.attempts}, ` +
+                        `not retrying: ${message}`,
+                )
+                await jobMarkFailedForGood(job.id, `permanent (not retried): ${message}`)
+                continue
+            }
             logger.error(
                 fileName,
                 `job ${job.id} (${job.kind}) failed on attempt ${job.attempts}: ${message}`,

@@ -9,6 +9,7 @@
 // a crash between "Resend accepted" and "rows updated" cannot double-send.
 
 import { db } from '~/lib/db.server'
+import { isPermanentError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 import { signUnsubscribeToken } from '~/lib/signedLinks.server'
 import { BATCH_SIZE, emailEnabled, sendBatch, type OutboundEmail } from './resend.server'
@@ -24,6 +25,8 @@ export type ChartAlertSummary = {
     queued: number
     sent: number
     failed: number
+    /** Of `failed`, how many were in chunks Resend refused with a permanent 4xx. */
+    permanentFailed: number
 }
 
 export async function sendChartAlert(
@@ -35,7 +38,7 @@ export async function sendChartAlert(
 ): Promise<ChartAlertSummary> {
     if (!emailEnabled()) {
         logger.warn(fileName, 'RESEND_API_KEY/RESEND_FROM_EMAIL not set — alert skipped')
-        return { skipped: true, queued: 0, sent: 0, failed: 0 }
+        return { skipped: true, queued: 0, sent: 0, failed: 0, permanentFailed: 0 }
     }
 
     const team = await db.team.findUniqueOrThrow({
@@ -82,7 +85,13 @@ export async function sendChartAlert(
               : `replaced ${revised === 1 ? 'a depth chart' : `${revised} depth charts`} in place`
     const subject = `${team.name} ${added > 0 ? 'posted a new depth chart' : 'updated a depth chart'}`
 
-    const summary: ChartAlertSummary = { skipped: false, queued: queued.length, sent: 0, failed: 0 }
+    const summary: ChartAlertSummary = {
+        skipped: false,
+        queued: queued.length,
+        sent: 0,
+        failed: 0,
+        permanentFailed: 0,
+    }
     for (let i = 0; i < queued.length; i += BATCH_SIZE) {
         const chunk = queued.slice(i, i + BATCH_SIZE)
         const emails: OutboundEmail[] = chunk.map((row) => {
@@ -129,6 +138,7 @@ export async function sendChartAlert(
                 data: { status: 'FAILED', error },
             })
             summary.failed += chunk.length
+            if (isPermanentError(err)) summary.permanentFailed += chunk.length
             logger.warn(fileName, `${batchKey}: chunk failed — ${error}`)
         }
     }
