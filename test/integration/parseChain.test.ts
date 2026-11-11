@@ -95,14 +95,14 @@ describe('a re-parse reprices before anything reads EPA', () => {
         await jobEnqueue('projections-fit')
         await drain()
 
-        // The boot-time projections-fit stood down on unpriced plays; the one
-        // the successful epa-fit queued is the only one that fitted.
-        expect(await ranAfter(seededUpTo)).toEqual([
-            'pbp-parse',
-            'projections-fit',
-            'epa-fit',
-            'projections-fit',
-        ])
+        // The parse moved the boot-time projections-fit behind its epa-fit: it
+        // never met unpriced plays, never stood down, and fitted exactly once.
+        expect(await ranAfter(seededUpTo)).toEqual(['pbp-parse', 'epa-fit', 'projections-fit'])
+        const projectionJobs = await db.job.findMany({
+            where: { kind: 'projections-fit', id: { gt: seededUpTo } },
+        })
+        expect(projectionJobs).toHaveLength(1)
+        expect(projectionJobs[0]).toMatchObject({ status: 'SUCCEEDED', attempts: 1, error: null })
         expect(projections.fits).toEqual([full])
         expect(await priced()).toBe(full)
     }, 60_000)
@@ -127,13 +127,19 @@ describe('a re-parse reprices before anything reads EPA', () => {
         await jobEnqueue('projections-fit')
         await drain(handlers)
 
-        // The fit failed and went back to PENDING a couple of minutes out; the
-        // projections-fit that was due ran, found unpriced plays, and stood down.
+        // The fit failed and went back to PENDING a couple of minutes out. The
+        // projections-fit behind it came due, found unpriced plays and FAILED —
+        // retryably, not as a success it never earned.
         const retry = await db.job.findFirstOrThrow({
             where: { kind: 'epa-fit', status: 'PENDING' },
         })
         expect(retry.attempts).toBe(1)
         expect(retry.runAt.getTime()).toBeGreaterThan(Date.now())
+        const waiting = await db.job.findFirstOrThrow({
+            where: { kind: 'projections-fit', id: { gt: seededUpTo } },
+        })
+        expect(waiting).toMatchObject({ status: 'PENDING', attempts: 1 })
+        expect(waiting.error).toMatch(/EPA is stale/)
         expect(await priced()).toBe(0)
         expect(projections.fits).toEqual([])
 
@@ -141,9 +147,48 @@ describe('a re-parse reprices before anything reads EPA', () => {
         await db.job.update({ where: { id: retry.id }, data: { runAt: new Date() } })
         await drain(handlers)
 
-        expect((await ranAfter(seededUpTo)).slice(-2)).toEqual(['epa-fit', 'projections-fit'])
+        // The successful fit pulled that same job forward rather than adding one.
+        expect(await ranAfter(seededUpTo)).toEqual(['pbp-parse', 'epa-fit', 'projections-fit'])
+        expect(await db.job.findUniqueOrThrow({ where: { id: waiting.id } })).toMatchObject({
+            status: 'SUCCEEDED',
+            attempts: 2,
+        })
         expect(projections.fits).toEqual([full])
         expect(await priced()).toBe(full)
+    }, 60_000)
+
+    it('ends projections-fit FAILED, not SUCCEEDED, when epa-fit fails for good', async () => {
+        const handlers: Record<string, JobHandler> = {
+            ...JOB_HANDLERS,
+            'epa-fit': async () => {
+                throw new Error('simulated epa-fit outage')
+            },
+        }
+        const { seededUpTo } = await seed()
+
+        await bumpParserVersion()
+        await jobEnqueue('pbp-parse')
+        await jobEnqueue('projections-fit')
+        // Walk the retry ladder: bring every backed-off job due and drain, until
+        // nothing is left pending.
+        for (let round = 0; round < 10; round++) {
+            await db.job.updateMany({ where: { status: 'PENDING' }, data: { runAt: new Date() } })
+            await drain(handlers)
+            if ((await db.job.count({ where: { status: 'PENDING' } })) === 0) break
+        }
+
+        const after = await db.job.findMany({
+            where: { id: { gt: seededUpTo }, kind: { in: ['epa-fit', 'projections-fit'] } },
+            select: { kind: true, status: true, attempts: true, error: true },
+            orderBy: { kind: 'asc' },
+        })
+        // Both visible as failures; no projections-fit success to mislead
+        // jobHealth or collect.sh.
+        expect(after).toHaveLength(2)
+        expect(after[0]).toMatchObject({ kind: 'epa-fit', status: 'FAILED', attempts: 5 })
+        expect(after[1]).toMatchObject({ kind: 'projections-fit', status: 'FAILED', attempts: 5 })
+        expect(after[1].error).toMatch(/EPA is stale/)
+        expect(projections.fits).toEqual([])
     }, 60_000)
 
     it('still reprices when the worker died after the parse committed', async () => {

@@ -19,8 +19,14 @@ export const jobEnqueue = async (
  * enqueued here — a stale `projections-fit` from boot would run before a fresh
  * `epa-fit`, which is the ordering this exists to prevent. Each kind gets a runAt
  * a millisecond after the previous one, so the order holds whatever the ids.
+ *
+ * A kind listed in `moveOnly` is moved if it is pending but never created: the
+ * chain only reorders work something else already asked for.
  */
-export const jobEnqueueChain = async (kinds: readonly string[]): Promise<void> => {
+export const jobEnqueueChain = async (
+    kinds: readonly string[],
+    { moveOnly = [] }: { moveOnly?: readonly string[] } = {},
+): Promise<void> => {
     const base = Date.now()
     for (const [i, kind] of kinds.entries()) {
         const runAt = new Date(base + i + 1)
@@ -28,7 +34,7 @@ export const jobEnqueueChain = async (kinds: readonly string[]): Promise<void> =
             where: { kind, status: 'PENDING' },
             data: { runAt },
         })
-        if (count === 0) await db.job.create({ data: { kind, runAt } })
+        if (count === 0 && !moveOnly.includes(kind)) await db.job.create({ data: { kind, runAt } })
     }
 }
 
