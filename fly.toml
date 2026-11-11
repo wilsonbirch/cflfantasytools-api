@@ -84,9 +84,14 @@ kill_timeout = '300s'
   size = 'shared-cpu-1x'
   memory = '512mb'
 
-# 1GB, not 512mb: this machine launches Chromium for the club sites that need
-# JS, and 512mb OOMs under Puppeteer.
+# 512mb since browser scraping was removed (it was 1GB for Chromium, which
+# OOMed at 512mb). Measured 2026-11-10 with the production image under a hard
+# 512MB cgroup limit, on a corpus ~1.4x production's (475 games, 70k plays):
+# forced pbp-parse, epa-fit, projections-fit and a nine-club depth-chart sweep
+# archiving and pdftotext-parsing 90 PDFs peaked at ~320MB RSS, V8 heap under
+# 100MB, with no OOM; it also completed under 384MB. If the worker ever OOMs,
+# raising this back to 1gb is the first fix.
 [[vm]]
   processes = ['worker']
   size = 'shared-cpu-1x'
-  memory = '1gb'
+  memory = '512mb'

@@ -50,7 +50,7 @@ for (const team of targets) {
     try {
         // fetchPage inlines payload-only HTML (Hamilton's season table), so the
         // fixture holds exactly what the extractor saw.
-        const doc = await fetchPage(team.depthChartUrl, team.requiresBrowser)
+        const doc = await fetchPage(team.depthChartUrl)
         const nodes = keptNodes(doc, team.strategy, team.config)
         const html =
             `<!-- ${team.abbreviation} — trimmed from ${team.depthChartUrl} -->\n` +

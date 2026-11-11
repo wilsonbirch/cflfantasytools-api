@@ -51,6 +51,13 @@ builder.prismaObject('Job', {
     }),
 })
 
+// Browser scraping was removed (every club page is server-rendered since the
+// 2026 platform move). The column stays until a later migration drops it, and
+// the web admin screen still reads and sends the field, so it stays here too —
+// deprecated, always false in practice, and rejected if set to true.
+const BROWSER_DEPRECATION =
+    'Browser scraping was removed; every source is fetched with plain HTTP. A source with this set fails its scrape.'
+
 builder.prismaObject('TeamSource', {
     fields: (t) => ({
         id: t.exposeInt('id'),
@@ -58,7 +65,9 @@ builder.prismaObject('TeamSource', {
         url: t.exposeString('url'),
         strategy: t.exposeString('strategy'),
         config: t.expose('config', { type: 'JSON' }),
-        requiresBrowser: t.exposeBoolean('requiresBrowser'),
+        requiresBrowser: t.exposeBoolean('requiresBrowser', {
+            deprecationReason: BROWSER_DEPRECATION,
+        }),
         enabled: t.exposeBoolean('enabled'),
         lastOkAt: t.expose('lastOkAt', { type: 'DateTime', nullable: true }),
         lastError: t.exposeString('lastError', { nullable: true }),
@@ -74,7 +83,10 @@ const TeamSourceInput = builder.inputType('TeamSourceInput', {
         url: t.string(),
         strategy: t.string(),
         config: t.field({ type: 'JSON' }),
-        requiresBrowser: t.boolean(),
+        requiresBrowser: t.boolean({
+            description: 'Only false is accepted; true is rejected with BAD_USER_INPUT.',
+            deprecationReason: BROWSER_DEPRECATION,
+        }),
         enabled: t.boolean(),
     }),
 })
@@ -110,7 +122,10 @@ const teamSourcePatch = z.object({
         .refine(isStrategy, `strategy must be one of ${STRATEGIES.join(', ')}`)
         .optional(),
     config: z.record(z.string(), z.unknown()).optional(),
-    requiresBrowser: z.boolean().optional(),
+    // Still writable so an admin can clear a stale flag; never settable again.
+    requiresBrowser: z
+        .literal(false, { error: 'browser scraping was removed; requiresBrowser must be false' })
+        .optional(),
     enabled: z.boolean().optional(),
 })
 

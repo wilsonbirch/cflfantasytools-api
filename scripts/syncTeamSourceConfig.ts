@@ -26,7 +26,9 @@ for (const t of targets) {
             url: t.depthChartUrl,
             strategy: t.strategy,
             config: t.config as Prisma.InputJsonValue,
-            requiresBrowser: t.requiresBrowser,
+            // Browser scraping was removed; checkTeam fails any source still
+            // flagged. Clearing it here keeps a sync the way to repair one.
+            requiresBrowser: false,
         },
     })
     console.log(`${t.abbreviation}: ${count} source(s) updated`)

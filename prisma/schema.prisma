@@ -128,7 +128,10 @@ model TeamSource {
   strategy        String
   // Strategy parameters (cell indexes, selectors, href filters, origin).
   config          Json    @default("{}")
-  // Only teams whose page needs JS pay for a Chromium launch.
+  // DEPRECATED, not read for behaviour: browser scraping was removed, and
+  // checkTeam fails any source still flagged. Kept because migrations are
+  // additive (the outgoing release serves against the new schema mid-deploy);
+  // a later migration can drop it.
   requiresBrowser Boolean @default(false)
   enabled         Boolean @default(true)
 

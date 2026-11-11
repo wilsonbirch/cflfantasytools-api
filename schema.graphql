@@ -666,7 +666,7 @@ type TeamSource {
   lastError: String
   lastItemCount: Int
   lastOkAt: DateTime
-  requiresBrowser: Boolean!
+  requiresBrowser: Boolean! @deprecated(reason: "Browser scraping was removed; every source is fetched with plain HTTP. A source with this set fails its scrape.")
   strategy: String!
   team: Team!
   updatedAt: DateTime!
@@ -677,7 +677,9 @@ type TeamSource {
 input TeamSourceInput {
   config: JSON
   enabled: Boolean
-  requiresBrowser: Boolean
+
+  """Only false is accepted; true is rejected with BAD_USER_INPUT."""
+  requiresBrowser: Boolean @deprecated(reason: "Browser scraping was removed; every source is fetched with plain HTTP. A source with this set fails its scrape.")
   strategy: String
   url: String
 }

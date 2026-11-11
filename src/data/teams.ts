@@ -23,7 +23,6 @@ export type TeamSeed = {
     depthChartUrl: string
     strategy: string
     config: Record<string, unknown>
-    requiresBrowser: boolean
 }
 
 // Extractor parameter shapes, by strategy:
@@ -51,7 +50,6 @@ export const TEAMS: TeamSeed[] = [
         // "3 points of the game" article links that now share the table.
         strategy: 'tableRowCells',
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
-        requiresBrowser: false,
     },
     {
         slug: 'bc-lions',
@@ -68,7 +66,6 @@ export const TEAMS: TeamSeed[] = [
         depthChartUrl: 'https://bclions.com/depth-chart-and-game-notes',
         strategy: 'tableRowCells',
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
-        requiresBrowser: false,
     },
     {
         slug: 'edmonton-elks',
@@ -89,7 +86,6 @@ export const TEAMS: TeamSeed[] = [
             titleSelector: 'p.line-clamp-2',
             pdfHrefMatch: '\\.pdf$',
         },
-        requiresBrowser: false,
     },
     {
         slug: 'calgary-stampeders',
@@ -106,7 +102,6 @@ export const TEAMS: TeamSeed[] = [
         depthChartUrl: 'https://stampeders.com/position-charts-game-notes-page',
         strategy: 'tableRowCells',
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
-        requiresBrowser: false,
     },
     {
         slug: 'montreal-alouettes',
@@ -122,7 +117,6 @@ export const TEAMS: TeamSeed[] = [
         strategy: 'tableRowCells',
         // 2026 platform: five cells (… | Digital Roster | Depth Chart), was six.
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
-        requiresBrowser: false,
     },
     {
         slug: 'winnipeg-blue-bombers',
@@ -139,7 +133,6 @@ export const TEAMS: TeamSeed[] = [
         depthChartUrl: 'https://www.bluebombers.com/2026-depth-position-charts/',
         strategy: 'tableRowCells',
         config: { titleCells: [0, 1, 2], linkCell: 4, minCells: 5 },
-        requiresBrowser: false,
     },
     {
         slug: 'hamilton-tiger-cats',
@@ -179,7 +172,6 @@ export const TEAMS: TeamSeed[] = [
                 },
             ],
         },
-        requiresBrowser: false,
     },
     {
         slug: 'toronto-argonauts',
@@ -194,7 +186,6 @@ export const TEAMS: TeamSeed[] = [
         depthChartUrl: 'https://www.argonauts.ca/depth-chart-and-game-notes/',
         strategy: 'tableCellLookback',
         config: { lookback: 3 },
-        requiresBrowser: false,
     },
     {
         slug: 'ottawa-redblacks',
@@ -216,6 +207,5 @@ export const TEAMS: TeamSeed[] = [
             // The button text varies by week; the card's one PDF is the chart.
             linkHrefMatch: '\\.pdf$',
         },
-        requiresBrowser: false,
     },
 ]

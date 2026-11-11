@@ -96,5 +96,5 @@ jobs:
         steps:
             - uses: actions/checkout@v7
             # Validates the multi-stage image assembles — npm ci, prisma generate,
-            # the Chromium install, and the dev-dep prune. No registry push.
+            # the poppler install, and the dev-dep prune. No registry push.
             - run: docker build -t cflfantasytools-api:ci .

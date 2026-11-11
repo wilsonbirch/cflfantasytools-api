@@ -178,6 +178,26 @@ describe('teamSources', () => {
         expect(cfg.data?.updateTeamSource.config).toEqual({ lookback: 2 })
     })
 
+    it('still accepts requiresBrowser: false, so an admin can clear a stale flag', async () => {
+        // The web admin form sends the field on every save; it is deprecated, not gone.
+        const admin = await tokenFor('ADMIN')
+        const team = await seedTeamWithSource()
+        const id = team.sources[0].id
+        await db.teamSource.update({ where: { id }, data: { requiresBrowser: true } })
+
+        const r = await executeOperation<{ updateTeamSource: { requiresBrowser: boolean } }>(
+            {
+                query: `mutation ($id: Int!, $input: TeamSourceInput!) {
+                    updateTeamSource(id: $id, input: $input) { requiresBrowser }
+                }`,
+                variables: { id, input: { requiresBrowser: false } },
+            },
+            { token: admin },
+        )
+        expect(r.errors).toBeUndefined()
+        expect(r.data?.updateTeamSource.requiresBrowser).toBe(false)
+    })
+
     it('rejects a bad url, an unknown strategy, a non-object config and an unknown id', async () => {
         const admin = await tokenFor('ADMIN')
         const team = await seedTeamWithSource()
@@ -197,6 +217,12 @@ describe('teamSources', () => {
             )
             expect(code(r), JSON.stringify(input)).toBe('BAD_USER_INPUT')
         }
+        const browser = await executeOperation(
+            { query: q, variables: { id, input: { requiresBrowser: true } } },
+            { token: admin },
+        )
+        expect(code(browser)).toBe('BAD_USER_INPUT')
+        expect(browser.errors?.[0].message).toMatch(/browser scraping was removed/)
         const missing = await executeOperation(
             { query: q, variables: { id: 999, input: { enabled: true } } },
             { token: admin },
