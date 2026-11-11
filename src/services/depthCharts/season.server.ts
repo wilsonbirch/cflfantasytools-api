@@ -1,10 +1,10 @@
-// Season/week derivation for stamping a newly posted chart.
+// Season/week by hardcoded date boundaries — the LAST resort.
 //
 // Ported from 3DF's getDepthChartInfo. The boundaries are hardcoded dates, which
 // is wrong in principle — the schedule moves year to year, and the 2026 season
-// opened on June 4 rather than June 5. It is kept as-is here to avoid changing
-// behaviour during the port; the correct fix is to derive both from the Gameweek
-// rows the Game Zone feed already gives us, which is a follow-up.
+// opened on June 4 rather than June 5. A chart's week now comes from what the
+// club printed, matched against the Gameweek/Match rows (chartWeek.ts); this
+// only runs for a season the Game Zone feed has not given us.
 const REGULAR_SEASON_START = { month: 5, day: 5 } // June 5, zero-indexed month
 const POST_SEASON_START = { month: 9, day: 31 } // October 31
 
