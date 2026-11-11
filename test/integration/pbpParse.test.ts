@@ -458,3 +458,76 @@ describe('parseGame on a payload from the new feeds', () => {
         expect(differing.length).toBeLessThanOrEqual(1)
     })
 })
+
+// Ottawa (88019) v Winnipeg (110380), 2023 week 6, final 31–28 — verbatim from
+// the legacy 3DF database. 225 rows, 71 of them ghost copies of the next drive
+// left on the end of the previous one under the wrong team's id: summed as
+// given, the play by play read 49–51.
+const OTT_WPG_2023 = readFileSync('test/fixtures/pbp/legacy-payload-9889304.json', 'utf8')
+const OTT_WPG_2023_ID = 9889304
+
+describe('parseGame on a legacy 2023 payload', () => {
+    const OTT = '88019'
+    const WPG = '110380'
+
+    async function seed(year: number) {
+        await db.team.create({
+            data: { slug: 'ottawa', abbreviation: 'OTT', name: 'Ottawa', geniusTeamId: OTT },
+        })
+        await db.team.create({
+            data: { slug: 'winnipeg', abbreviation: 'WPG', name: 'Winnipeg', geniusTeamId: WPG },
+        })
+        await db.game.create({ data: { id: OTT_WPG_2023_ID, response: OTT_WPG_2023, year } })
+        return parseGame(OTT_WPG_2023_ID)
+    }
+
+    const playSum = async () => {
+        const plays = await db.play.findMany({
+            where: { gameId: OTT_WPG_2023_ID },
+            select: { geniusTeamId: true, points: true },
+        })
+        const sum = (team: string) =>
+            plays.reduce(
+                (n, p) =>
+                    n +
+                    (p.geniusTeamId === team ? Math.max(p.points ?? 0, 0) : 0) +
+                    (p.geniusTeamId !== team ? Math.max(-(p.points ?? 0), 0) : 0),
+                0,
+            )
+        return { OTT: sum(OTT), WPG: sum(WPG) }
+    }
+
+    it('drops the ghost rows, so the play by play reaches the official final', async () => {
+        const result = await seed(2023)
+
+        expect(result?.plays).toBe(225 - 71)
+        expect(await playSum()).toEqual({ OTT: 31, WPG: 28 })
+        // No Winnipeg quarterback left playing for Ottawa.
+        expect(
+            await db.play.count({
+                where: { gameId: OTT_WPG_2023_ID, geniusTeamId: OTT, passer: '#8 Z.Collaros' },
+            }),
+        ).toBe(0)
+    })
+
+    it('labels a drive by the score that actually followed it', async () => {
+        await seed(2023)
+        // Ottawa's opening three-and-out. Its ghost tail held Winnipeg's field
+        // goal under Ottawa's id, so the label read +3 for Ottawa. The next score
+        // was Winnipeg's: -3.
+        const drive = await db.drive.findUniqueOrThrow({
+            where: { gameId_number: { gameId: OTT_WPG_2023_ID, number: 2 } },
+            include: { Plays: true },
+        })
+        expect(drive.geniusTeamId).toBe(OTT)
+        expect(drive.Plays).toHaveLength(3)
+        expect(drive.points).toBeNull()
+        expect(drive.nextPointOutcome).toBe(-3)
+    })
+
+    it('leaves the same payload untouched when it is not from the legacy era', async () => {
+        // The repair is scoped to PRE_2026: a 2026 game parses exactly as before.
+        const result = await seed(2026)
+        expect(result?.plays).toBe(225)
+    })
+})

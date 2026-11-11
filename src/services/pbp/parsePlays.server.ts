@@ -9,6 +9,7 @@ import {
     nextPointOutcomes,
     type RawPlay,
 } from './drives'
+import { repairLegacyPlays } from './legacyRepair'
 
 const fileName = 'services/pbp/parsePlays'
 
@@ -31,9 +32,11 @@ export const fieldLengthForEra = (era: RuleEra): number => (era === 'E2027' ? 10
  * game looks stale to the next scheduled pbp-parse and is re-parsed without an
  * operator having to enqueue a forced run. History: v1 was the unversioned
  * md5(response); v2 covers the signed drive points (#26) and fixture metadata (#29);
- * v3 adds lost fumbles (`Play.fumbleLostBy`) and the corrected fumble turnovers.
+ * v3 adds lost fumbles (`Play.fumbleLostBy`) and the corrected fumble turnovers;
+ * v4 repairs the 2023/24 payloads before parsing (legacyRepair.ts) — ghost copies
+ * of plays dropped, subtypes that contradict the play text corrected.
  */
-export const PARSER_VERSION = 3
+export const PARSER_VERSION = 4
 
 type MatchInfo = {
     scheduledStartTime?: string
@@ -98,7 +101,26 @@ export async function parseGame(gameId: number): Promise<ParseSummary | null> {
     const teamById = new Map(teams.map((t) => [t.geniusTeamId as string, t]))
     const teamOf = (id: string) => teamById.get(id)
 
-    const drives = groupIntoDrives(chronological(raw))
+    // The 2023/24 payloads carry ghost copies of plays and rows whose subtype
+    // contradicts their own text; see legacyRepair.ts. Repaired for that era
+    // ONLY: it is the corpus the rules were measured on, and a 2026 payload must
+    // parse exactly as it did before they existed.
+    let ordered = chronological(raw)
+    if (era === 'PRE_2026') {
+        const repair = repairLegacyPlays(ordered)
+        ordered = repair.plays
+        const s = repair.summary
+        if (Object.values(s).some((n) => n > 0)) {
+            logger.info(
+                fileName,
+                `game ${gameId}: legacy repair dropped ${s.duplicatesDropped} ghost row(s), ` +
+                    `cleared ${s.touchdownsCleared} touchdown(s), nullified ${s.fieldGoalsNullified} ` +
+                    `field goal(s), scored ${s.missedFieldGoalSingles} missed-field-goal single(s)`,
+            )
+        }
+    }
+
+    const drives = groupIntoDrives(ordered)
     const outcomes = drives.map((d) => driveOutcome(d, teamOf))
     const nextPoints = nextPointOutcomes(drives, teamOf)
 
