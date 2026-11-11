@@ -1,4 +1,5 @@
 import { parseHTML } from 'linkedom'
+import { HttpStatusError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 import type { Doc } from './extractors'
 import { inlineNuxtFragments } from './nuxtFragments'
@@ -30,7 +31,9 @@ async function fetchHtml(url: string, fetchImpl: typeof fetch): Promise<string> 
         redirect: 'follow',
         signal: AbortSignal.timeout(30_000),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+    // Classified here, where the status is known: a 404 is permanent (the job
+    // fails without retrying), a 5xx/408/429 is transient.
+    if (!res.ok) throw new HttpStatusError(res.status, `HTTP ${res.status} ${res.statusText}`)
     return res.text()
 }
 

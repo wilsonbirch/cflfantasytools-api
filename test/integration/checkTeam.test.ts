@@ -143,9 +143,30 @@ describe('checkTeam', () => {
 
         const r = await checkTeam(team.id, 2026, serve('gone', 503))
         expect(r.status).toBe('FAILED')
+        // A 503 is an outage that may clear: the job should retry.
+        expect(r.permanent).toBe(false)
         const after = await db.depthChartList.findFirstOrThrow()
         // A club site being down must not become the new baseline.
         expect(after.value).toEqual(before.value)
+    })
+
+    it('marks a 404 on the listing page as permanent, and still records the ScrapeRun', async () => {
+        const team = await seedTeam()
+        const r = await checkTeam(team.id, 2026, serve('not found', 404))
+        expect(r).toMatchObject({ status: 'FAILED', permanent: true })
+        expect(r.error).toMatch(/HTTP 404/)
+        const run = await db.scrapeRun.findFirstOrThrow()
+        expect(run.status).toBe('FAILED')
+        expect(run.error).toMatch(/HTTP 404/)
+    })
+
+    it('treats a rate limit or a network error on the listing page as retryable', async () => {
+        const team = await seedTeam()
+        expect((await checkTeam(team.id, 2026, serve('slow down', 429))).permanent).toBe(false)
+        const offline = (async () => {
+            throw new TypeError('fetch failed')
+        }) as unknown as typeof fetch
+        expect((await checkTeam(team.id, 2026, offline)).permanent).toBe(false)
     })
 
     it('REJECTS an empty page instead of wiping the snapshot', async () => {
@@ -168,6 +189,8 @@ describe('checkTeam', () => {
         const r = await checkTeam(team.id, 2026, serve(CGY))
         expect(r.status).toBe('FAILED')
         expect(r.error).toMatch(/unknown strategy/)
+        // The same row gives the same answer on every retry.
+        expect(r.permanent).toBe(true)
     })
 
     it('skips a disabled source', async () => {

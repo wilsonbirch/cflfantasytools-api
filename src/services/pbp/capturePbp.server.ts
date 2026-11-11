@@ -1,4 +1,5 @@
 import { db } from '~/lib/db.server'
+import { HttpStatusError, isPermanentError, PermanentError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 import { ruleEraForYear } from '~/lib/season.server'
 import type { RawPlay } from './drives'
@@ -130,7 +131,7 @@ export function toStoredPayload(pbpBody: unknown, scoreboardBody: unknown): Stor
 
 async function fetchFeed(fetchImpl: typeof fetch, widget: string, fixtureId: number) {
     const res = await fetchImpl(feedUrl(widget, fixtureId), { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) throw new Error(`${widget}: HTTP ${res.status}`)
+    if (!res.ok) throw new HttpStatusError(res.status, `${widget}: HTTP ${res.status}`)
     const body = (await res.json()) as FeedEnvelope<unknown>
     const status = body?.data?.status?.status
     // Unplayed fixtures still answer AVAILABLE, just with no plays; anything
@@ -192,7 +193,9 @@ async function linkFixtureToMatch(
  * Throws when fixtures were attempted and NONE could be fetched. Individual
  * failures are tolerated — one bad fixture must not cost the season — but a
  * run where the feed failed for everything is an outage, and must surface in
- * jobHealth rather than record a success.
+ * jobHealth rather than record a success. When every one of those failures
+ * was a 4xx — the feed routes have moved, as they did in 2026 — the throw is
+ * permanent, so the job fails at once instead of retrying the same 404s.
  */
 export async function capturePbp(
     year: number,
@@ -208,6 +211,7 @@ export async function capturePbp(
         skippedFuture: 0,
         failed: 0,
     }
+    let permanentFailures = 0
 
     const fixtures = await discoverFixtures(fetchImpl)
     summary.discovered = fixtures.length
@@ -239,6 +243,7 @@ export async function capturePbp(
             }
         } catch (err) {
             summary.failed += 1
+            if (isPermanentError(err)) permanentFailures += 1
             logger.warn(
                 fileName,
                 `fixture ${fixture.fixtureId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -254,7 +259,10 @@ export async function capturePbp(
     logger.info(fileName, line)
 
     if (summary.failed > 0 && summary.captured === 0 && summary.skippedEmpty === 0) {
-        throw new Error(`every fixture failed — the feed is down or has moved. ${line}`)
+        const message = `every fixture failed — the feed is down or has moved. ${line}`
+        throw permanentFailures === summary.failed
+            ? new PermanentError(message)
+            : new Error(message)
     }
     return summary
 }

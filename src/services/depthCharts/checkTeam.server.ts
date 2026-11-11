@@ -1,4 +1,5 @@
 import { db } from '~/lib/db.server'
+import { isPermanentError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 import { currentGameweek } from '~/services/gamezone/gameweeks.server'
 import { getDepthChartInfo } from './season.server'
@@ -24,6 +25,11 @@ export type CheckResult = {
     /** Charts whose PDF changed under an unchanged href. */
     revisedCount: number
     error?: string
+    /**
+     * On FAILED: retrying cannot help (the page answered 4xx, or the source
+     * is misconfigured), so the job should fail without the retry ladder.
+     */
+    permanent?: boolean
 }
 
 const asItems = (value: unknown): DepthChartItem[] | null =>
@@ -50,19 +56,29 @@ export async function checkTeam(
     fetchImpl: typeof fetch = fetch,
 ): Promise<CheckResult> {
     const run = await db.scrapeRun.create({ data: { teamId, status: 'FAILED' } })
-    const fail = async (error: string, status: 'FAILED' | 'REJECTED' = 'FAILED') => {
+    const fail = async (
+        error: string,
+        status: 'FAILED' | 'REJECTED' = 'FAILED',
+        permanent = false,
+    ): Promise<CheckResult> => {
         await db.scrapeRun.update({
             where: { id: run.id },
             data: { status, error, finishedAt: new Date() },
         })
-        logger.warn(fileName, `team ${teamId}: ${status} — ${error}`)
-        return { teamId, status, itemCount: 0, addedCount: 0, revisedCount: 0, error }
+        logger.warn(
+            fileName,
+            `team ${teamId}: ${status}${permanent ? ' (permanent)' : ''} — ${error}`,
+        )
+        return { teamId, status, itemCount: 0, addedCount: 0, revisedCount: 0, error, permanent }
     }
 
+    // Configuration problems: the same row gives the same answer on every retry.
     const source = await db.teamSource.findFirst({ where: { teamId, kind: 'depth-chart' } })
-    if (!source) return fail('no depth-chart source configured')
-    if (!source.enabled) return fail('source disabled')
-    if (!isStrategy(source.strategy)) return fail(`unknown strategy "${source.strategy}"`)
+    if (!source) return fail('no depth-chart source configured', 'FAILED', true)
+    if (!source.enabled) return fail('source disabled', 'FAILED', true)
+    if (!isStrategy(source.strategy)) {
+        return fail(`unknown strategy "${source.strategy}"`, 'FAILED', true)
+    }
 
     const list = await db.depthChartList.findUnique({ where: { teamId_year: { teamId, year } } })
     const previous = list ? asItems(list.value) : null
@@ -80,7 +96,13 @@ export async function checkTeam(
             )
         }
     } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err))
+        // A 4xx on the listing page (lib/jobErrors) is permanent; a timeout,
+        // network error or 5xx is not.
+        return fail(
+            err instanceof Error ? err.message : String(err),
+            'FAILED',
+            isPermanentError(err),
+        )
     }
 
     const verdict = diffSnapshot(previous, items)

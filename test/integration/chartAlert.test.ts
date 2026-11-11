@@ -107,6 +107,22 @@ describe('sendChartAlert', () => {
         expect(retry).toMatchObject({ queued: 0, sent: 0 })
     })
 
+    it('counts a batch Resend refuses with a 4xx as permanently failed', async () => {
+        const summary = await sendChartAlert(teamId, 101, 1, 0, capture([], 422))
+        expect(summary).toMatchObject({ sent: 0, failed: 2, permanentFailed: 2 })
+    })
+
+    it('does not count a 5xx or a rate limit as permanent', async () => {
+        expect(await sendChartAlert(teamId, 101, 1, 0, capture([], 500))).toMatchObject({
+            failed: 2,
+            permanentFailed: 0,
+        })
+        expect(await sendChartAlert(teamId, 102, 1, 0, capture([], 429))).toMatchObject({
+            failed: 2,
+            permanentFailed: 0,
+        })
+    })
+
     it('skips entirely when sending is not configured', async () => {
         delete process.env.RESEND_API_KEY
         const summary = await sendChartAlert(teamId, 101, 1, 0, capture([]))

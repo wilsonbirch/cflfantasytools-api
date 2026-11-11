@@ -56,7 +56,8 @@ export const jobMarkFailed = async (
     })
 }
 
-// Skip the retry ladder — for jobs no amount of retrying can fix (unknown kind).
+// Skip the retry ladder — for jobs no amount of retrying can fix (an unknown
+// kind, or a handler that raised a PermanentError / 4xx; see lib/jobErrors).
 export const jobMarkFailedForGood = async (id: number, message: string): Promise<void> =>
     jobMarkFailed(id, MAX_ATTEMPTS, message)
 

@@ -1,3 +1,4 @@
+import { HttpStatusError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 
 const fileName = 'services/pbp/discoverFixtures'
@@ -181,7 +182,7 @@ export async function discoverFixtures(
     fetchImpl: typeof fetch = fetch,
 ): Promise<DiscoveredFixture[]> {
     const res = await fetchImpl(SCHEDULE_URL, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) throw new Error(`schedule fetch failed: HTTP ${res.status}`)
+    if (!res.ok) throw new HttpStatusError(res.status, `schedule fetch failed: HTTP ${res.status}`)
 
     const fixtures = parseScheduleFixtures(await res.text())
     if (fixtures.length === 0) {
