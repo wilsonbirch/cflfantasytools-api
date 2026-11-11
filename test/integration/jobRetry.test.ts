@@ -137,6 +137,26 @@ describe('job loop retry decision', () => {
         expect(row.runAt.getTime()).toBeGreaterThan(Date.now() + 60_000)
     })
 
+    it('a source still flagged requiresBrowser fails for good on attempt 1, without a fetch', async () => {
+        const url = 'https://club.test/needs-a-browser/'
+        const team = await seedClub(url)
+        await db.teamSource.updateMany({
+            where: { teamId: team.id },
+            data: { requiresBrowser: true },
+        })
+        const fn = stubFetch(() => new Response(CGY, { status: 200 }))
+        const job = await jobEnqueue('depth-chart-team', { teamId: team.id, year: 2026 })
+
+        expect(await tickOnce(JOB_HANDLERS)).toBe(1)
+        const row = await db.job.findUniqueOrThrow({ where: { id: job.id } })
+        expect(row).toMatchObject({ status: 'FAILED', attempts: 1 })
+        expect(row.error).toMatch(
+            /^permanent \(not retried\): team \d+: browser scraping was removed/,
+        )
+        expect(await jobHasPending()).toBe(false)
+        expect(fn).not.toHaveBeenCalled()
+    })
+
     it('a malformed payload fails for good: no retry can supply a teamId', async () => {
         const job = await jobEnqueue('depth-chart-team', { year: 2026 })
         await tickOnce(JOB_HANDLERS)

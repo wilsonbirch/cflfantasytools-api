@@ -86,7 +86,8 @@ export async function checkTeam(
     // The column outlives the feature until a later migration drops it. A row
     // still flagged was configured for a client-rendered page; scraping it with
     // a plain fetch would quietly read the wrong markup, so refuse instead.
-    if (source.requiresBrowser) return fail(BROWSER_REMOVED)
+    // Permanent like the other config failures: no retry clears the flag.
+    if (source.requiresBrowser) return fail(BROWSER_REMOVED, 'FAILED', true)
 
     const list = await db.depthChartList.findUnique({ where: { teamId_year: { teamId, year } } })
     const previous = list ? asItems(list.value) : null

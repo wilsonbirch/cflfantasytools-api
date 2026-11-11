@@ -209,7 +209,7 @@ describe('checkTeam', () => {
         expect(r.error).toMatch(/no depth-chart source/)
     })
 
-    it('fails a source still flagged requiresBrowser, without fetching or touching the snapshot', async () => {
+    it('fails a source still flagged requiresBrowser permanently, without fetching or touching the snapshot', async () => {
         const team = await seedTeam({ requiresBrowser: true })
         let fetched = 0
         const counting = (async () => {
@@ -218,7 +218,7 @@ describe('checkTeam', () => {
         }) as unknown as typeof fetch
 
         const r = await checkTeam(team.id, 2026, counting)
-        expect(r.status).toBe('FAILED')
+        expect(r).toMatchObject({ status: 'FAILED', permanent: true })
         expect(r.error).toMatch(/browser scraping was removed/)
         expect(fetched).toBe(0)
         expect(await db.depthChartList.count()).toBe(0)
