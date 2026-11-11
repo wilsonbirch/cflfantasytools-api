@@ -5,6 +5,15 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
+# OpenSSL here so the schema engine Prisma downloads during `npm ci` is the
+# debian-openssl-3.0.x build the runtime stage needs. Without it Prisma detects
+# no OpenSSL, fetches the openssl-1.1.x engine, and the release command's
+# `migrate deploy` has to download the 3.0.x one from binaries.prisma.sh — and
+# exits 1 if it cannot reach it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Deps first for layer caching. prisma.config.ts + the schema are needed by the
 # postinstall generate.
 COPY package.json package-lock.json prisma.config.ts ./
@@ -23,7 +32,7 @@ WORKDIR /app
 # browser: every club's depth-chart page is fetched with plain HTTP and parsed
 # with linkedom.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates poppler-utils \
+    && apt-get install -y --no-install-recommends ca-certificates openssl poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # --ignore-scripts skips postinstall: the prisma CLI is present now, but the
@@ -46,6 +55,9 @@ COPY --from=build /app/prisma.config.ts ./
 # against a root-owned /app, and a deploy should not depend on the network
 # reaching Prisma's CDN anyway. Taken from the build stage, which did download it.
 COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+# Fail the build, not the release, if the copied engine does not match this
+# stage's OpenSSL 3.0 (see the build stage).
+RUN ls node_modules/@prisma/engines/schema-engine-*-openssl-3.0.x >/dev/null
 
 # The CLI refuses to start if it cannot write here, even when the engine is
 # already in place — it checks the directory before deciding it needs nothing.

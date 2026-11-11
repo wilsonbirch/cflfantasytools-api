@@ -138,9 +138,10 @@ non-concurrent `CREATE INDEX` locks the table against writes while it builds,
 which is fine at this size but will not stay fine.
 
 Two process groups run from one image: `web` (GraphQL + `/health`) and `worker`.
-Both run on 512MB VMs. The worker was 1GB while it launched Chromium for a
-client-rendered club site; every club page is now fetched with plain HTTP, and
-the worker's heaviest session peaks at about 320MB RSS (see `fly.toml`).
+The worker's VM is 1GB, a holdover from when it launched Chromium for a
+client-rendered club site. Every club page is now fetched with plain HTTP and
+the heaviest worker session measured about 320MB RSS, so it is due to drop to
+512MB after the 2026 Grey Cup collection (see `fly.toml`).
 
 ### Off by default: collect on demand
 

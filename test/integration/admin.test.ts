@@ -178,24 +178,47 @@ describe('teamSources', () => {
         expect(cfg.data?.updateTeamSource.config).toEqual({ lookback: 2 })
     })
 
-    it('still accepts requiresBrowser: false, so an admin can clear a stale flag', async () => {
+    it('accepts but ignores requiresBrowser: true, and the row stays false', async () => {
         // The web admin form sends the field on every save; it is deprecated, not gone.
+        const admin = await tokenFor('ADMIN')
+        const team = await seedTeamWithSource()
+        const id = team.sources[0].id
+
+        const r = await executeOperation<{
+            updateTeamSource: { requiresBrowser: boolean; enabled: boolean }
+        }>(
+            {
+                query: `mutation ($id: Int!, $input: TeamSourceInput!) {
+                    updateTeamSource(id: $id, input: $input) { requiresBrowser enabled }
+                }`,
+                variables: { id, input: { requiresBrowser: true, enabled: false } },
+            },
+            { token: admin },
+        )
+        expect(r.errors).toBeUndefined()
+        expect(r.data?.updateTeamSource).toEqual({ requiresBrowser: false, enabled: false })
+        const row = await db.teamSource.findUniqueOrThrow({ where: { id } })
+        expect(row.requiresBrowser).toBe(false)
+    })
+
+    it('clears a stale requiresBrowser flag when any other field is saved', async () => {
         const admin = await tokenFor('ADMIN')
         const team = await seedTeamWithSource()
         const id = team.sources[0].id
         await db.teamSource.update({ where: { id }, data: { requiresBrowser: true } })
 
-        const r = await executeOperation<{ updateTeamSource: { requiresBrowser: boolean } }>(
+        const r = await executeOperation(
             {
                 query: `mutation ($id: Int!, $input: TeamSourceInput!) {
-                    updateTeamSource(id: $id, input: $input) { requiresBrowser }
+                    updateTeamSource(id: $id, input: $input) { id }
                 }`,
-                variables: { id, input: { requiresBrowser: false } },
+                variables: { id, input: { url: 'https://example.test/fixed' } },
             },
             { token: admin },
         )
         expect(r.errors).toBeUndefined()
-        expect(r.data?.updateTeamSource.requiresBrowser).toBe(false)
+        const row = await db.teamSource.findUniqueOrThrow({ where: { id } })
+        expect(row).toMatchObject({ url: 'https://example.test/fixed', requiresBrowser: false })
     })
 
     it('rejects a bad url, an unknown strategy, a non-object config and an unknown id', async () => {
@@ -217,12 +240,6 @@ describe('teamSources', () => {
             )
             expect(code(r), JSON.stringify(input)).toBe('BAD_USER_INPUT')
         }
-        const browser = await executeOperation(
-            { query: q, variables: { id, input: { requiresBrowser: true } } },
-            { token: admin },
-        )
-        expect(code(browser)).toBe('BAD_USER_INPUT')
-        expect(browser.errors?.[0].message).toMatch(/browser scraping was removed/)
         const missing = await executeOperation(
             { query: q, variables: { id: 999, input: { enabled: true } } },
             { token: admin },

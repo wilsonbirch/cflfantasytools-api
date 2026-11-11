@@ -84,14 +84,20 @@ kill_timeout = '300s'
   size = 'shared-cpu-1x'
   memory = '512mb'
 
-# 512mb since browser scraping was removed (it was 1GB for Chromium, which
-# OOMed at 512mb). Measured 2026-11-10 with the production image under a hard
-# 512MB cgroup limit, on a corpus ~1.4x production's (475 games, 70k plays):
-# forced pbp-parse, epa-fit, projections-fit and a nine-club depth-chart sweep
-# archiving and pdftotext-parsing 90 PDFs peaked at ~320MB RSS, V8 heap under
-# 100MB, with no OOM; it also completed under 384MB. If the worker ever OOMs,
-# raising this back to 1gb is the first fix.
+# 1GB was for Chromium, which OOMed at 512mb. Browser scraping is gone, and
+# 512mb looks enough: measured 2026-11-10 with the production image under a
+# hard 512MB cgroup limit, on a corpus ~1.4x production's (475 games, 70k
+# plays), a forced pbp-parse, epa-fit, projections-fit and a nine-club
+# depth-chart sweep archiving and pdftotext-parsing 90 PDFs peaked at ~320MB
+# RSS with the V8 heap under 100MB, and no OOM; it also completed under 384MB.
+#
+# Held at 1gb until after the 2026 Grey Cup collection, so the season's last
+# collection is not the first live 512mb run; lower it in a one-line follow-up.
+# The margin matters: at 512mb Node 22's heap limit is 259MB on top of ~240MB
+# of non-heap, so under pressure the kernel OOM-kills the worker before V8 can
+# fail cleanly. The job is left RUNNING, jobResetOrphaned requeues it with no
+# attempt cap, and the worker crash-loops.
 [[vm]]
   processes = ['worker']
   size = 'shared-cpu-1x'
-  memory = '512mb'
+  memory = '1gb'
