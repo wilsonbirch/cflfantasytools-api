@@ -1,7 +1,8 @@
+import { jobEnqueueChain } from '~/dao/job.server'
 import { syncGameZone } from '~/services/gamezone/syncGameZone.server'
 import { capturePbp } from '~/services/pbp/capturePbp.server'
 import { parseStoredGames } from '~/services/pbp/parsePlays.server'
-import { refitAndApply } from '~/services/epa/fitEp.server'
+import { epaIsStale, refitAndApply } from '~/services/epa/fitEp.server'
 import { runProjectionsFit } from '~/services/projections/fitProjections.server'
 import { checkTeam, sweepAllTeams } from '~/services/depthCharts/checkTeam.server'
 import { PermanentError } from '~/lib/jobErrors.server'
@@ -28,21 +29,65 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     // a parser bug, and the raw blob is retained so this is re-runnable.
     // `year` omitted parses every stored season, not just the current one —
     // which is what the legacy 2023/24 backfill will need.
+    //
+    // A parse deletes and recreates Play rows with a null `epa`, and only
+    // epa-fit writes it back. So whenever stored plays may be unpriced, the
+    // parse puts epa-fit straight behind itself in this session instead of
+    // leaving it to its 25-hour schedule — which let a PARSER_VERSION bump leave
+    // production unpriced for up to a day. Decided from stored state
+    // (epaIsStale), not from this attempt's parse count: a worker that died after
+    // the last game committed leaves a retry that parses nothing, and that retry
+    // must still queue the fit.
+    //
+    // A projections-fit already pending (queued at boot, ahead of everything) is
+    // moved behind that epa-fit too, so a normal collection never runs it on
+    // unpriced plays. It is only moved, never created: the epa-fit queues one
+    // when it succeeds.
     'pbp-parse': async (payload) => {
         const { year, force } = asRecord(payload)
         await parseStoredGames(typeof year === 'number' ? year : undefined, force === true)
+        if (await epaIsStale()) {
+            await jobEnqueueChain(['epa-fit', 'projections-fit'], { moveOnly: ['projections-fit'] })
+        }
     },
     // Refits the expected-points surface and reprices every play from it.
     // Separate from pbp-parse for the same reason parse is separate from
     // capture: a model change must not be able to break normalization, and both
     // halves rebuild from stored rows so this is re-runnable at any time.
+    //
+    // Every successful fit queues projections-fit behind it, chained or
+    // scheduled alike: any fit rewrites the EPA projections read, so the
+    // projection is stale after every one, and one extra projection pass a day
+    // is cheap. An unconditional rule also has no "was this chained?" flag for a
+    // crash or a retry to lose. Queued only on success: a fit that throws goes
+    // back to PENDING for a retry, and projections must wait for it.
     'epa-fit': async () => {
         await refitAndApply()
+        await jobEnqueueChain(['projections-fit'])
     },
     // Refits the projection model from stored plays and writes this and next
     // gameweek's projections under one fittedAt. Rebuilds from rows every run,
     // so a model change is a refit and older fits stay on disk for audit.
+    //
+    // REFUSES to run while stored plays may be unpriced (a parse newer than the
+    // last successful epa-fit): fitting then would publish projections built on
+    // all-zero EPA. The parse moves a pending projections-fit behind its
+    // epa-fit, so a normal collection never gets here; this is the backstop for
+    // an epa-fit that failed and is retrying.
+    //
+    // It throws rather than returning, so the job is never recorded as a fresh
+    // success it did not earn. The error is an ordinary, TRANSIENT one (not a
+    // PermanentError — retrying is exactly what can fix it): the job goes back
+    // to PENDING, a successful epa-fit pulls it forward to run, and if epa-fit
+    // never succeeds it exhausts its attempts and ends FAILED, where jobHealth
+    // and collect.sh can see it.
     'projections-fit': async (payload) => {
+        if (await epaIsStale()) {
+            throw new Error(
+                'EPA is stale: plays were parsed after the last successful epa-fit; ' +
+                    'waiting for that fit before projecting',
+            )
+        }
         const { year } = asRecord(payload)
         await runProjectionsFit(typeof year === 'number' ? year : currentSeasonYear())
     },

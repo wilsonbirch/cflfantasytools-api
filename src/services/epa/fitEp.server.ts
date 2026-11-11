@@ -5,6 +5,7 @@
 // rebuild from scratch, because the raw payload is retained and a model bug
 // should be a refit rather than a data loss — the same contract as the parser.
 
+import { jobLastSucceededAt } from '~/dao/job.server'
 import { db } from '~/lib/db.server'
 import { logger } from '~/lib/logger.server'
 import type { RuleEra } from '~/lib/season.server'
@@ -285,4 +286,27 @@ export async function refitAndApply(): Promise<{ fits: FitSummary[]; applied: Ap
     if (applied.scored === 0) logger.warn(fileName, `${line} — NO PLAY WAS PRICED`)
     else logger.info(fileName, line)
     return { fits, applied }
+}
+
+/**
+ * Whether stored plays may be unpriced: some game was parsed after the last
+ * epa-fit that SUCCEEDED (or no successful fit is on record at all).
+ *
+ * A parse deletes and recreates a game's plays with a null `epa`, and only
+ * epa-fit writes it back, so this is the question both the parse and the
+ * projections fit need answered. It is read from stored state on purpose,
+ * not from what one job attempt did: a worker that dies after the parse commits
+ * but before it queues anything leaves a retry that parses nothing, and a
+ * decision taken from that retry's count would never reprice the plays.
+ *
+ * A null `epa` cannot answer it — thousands of plays (kickoffs, converts, plays
+ * wiped by a penalty) are unpriced by design.
+ */
+export async function epaIsStale(): Promise<boolean> {
+    const fittedAt = await jobLastSucceededAt('epa-fit')
+    const parsedSince = await db.game.findFirst({
+        where: { parsedAt: fittedAt === null ? { not: null } : { gt: fittedAt } },
+        select: { id: true },
+    })
+    return parsedSince !== null
 }

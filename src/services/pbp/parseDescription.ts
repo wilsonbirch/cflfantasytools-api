@@ -29,6 +29,14 @@ const SPOT = String.raw`([A-Z]{2,4})(-?\d{1,3})`
 
 const player = (flags = '') => new RegExp(PLAYER, flags)
 
+/**
+ * The first player named in a description — the passer, ball carrier or kicker
+ * on every play type that has one, and so a player of the side that ran it. Not
+ * meaningful on a penalty-only row, where the only name is the offender.
+ */
+export const leadPlayerOf = (description: string): string | null =>
+    description.match(player())?.[0].trim() ?? null
+
 export type PassDepth = 'SHORT' | 'DEEP'
 export type PassDirection = 'LEFT' | 'MIDDLE' | 'RIGHT'
 

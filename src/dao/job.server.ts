@@ -10,6 +10,34 @@ export const jobEnqueue = async (
     runAt?: Date,
 ): Promise<Job> => db.job.create({ data: { kind, payload, ...(runAt ? { runAt } : {}) } })
 
+/**
+ * Queue `kinds` to run next, in the order given, behind whatever is running now.
+ *
+ * Deduped: a kind that already has a PENDING job reuses it rather than gaining a
+ * second. But the existing job is MOVED, not merely kept: the queue runs in
+ * (runAt, id) order, so a job enqueued at boot would otherwise run ahead of one
+ * enqueued here — a stale `projections-fit` from boot would run before a fresh
+ * `epa-fit`, which is the ordering this exists to prevent. Each kind gets a runAt
+ * a millisecond after the previous one, so the order holds whatever the ids.
+ *
+ * A kind listed in `moveOnly` is moved if it is pending but never created: the
+ * chain only reorders work something else already asked for.
+ */
+export const jobEnqueueChain = async (
+    kinds: readonly string[],
+    { moveOnly = [] }: { moveOnly?: readonly string[] } = {},
+): Promise<void> => {
+    const base = Date.now()
+    for (const [i, kind] of kinds.entries()) {
+        const runAt = new Date(base + i + 1)
+        const { count } = await db.job.updateMany({
+            where: { kind, status: 'PENDING' },
+            data: { runAt },
+        })
+        if (count === 0 && !moveOnly.includes(kind)) await db.job.create({ data: { kind, runAt } })
+    }
+}
+
 // Optimistic claim, safe through the transaction pooler (no advisory locks, no
 // $transaction): find the next due PENDING job, then flip it RUNNING guarded on
 // status — count === 1 means this session owns it. Correct for a single worker;
@@ -80,6 +108,19 @@ export const jobResetOrphaned = async (): Promise<number> => {
         data: { status: 'PENDING', startedAt: null },
     })
     return count
+}
+
+/**
+ * When the last successful run of `kind` finished, or null if none is on record
+ * (never ran, or pruned after 30 days). Callers must treat null as "not done".
+ */
+export const jobLastSucceededAt = async (kind: string): Promise<Date | null> => {
+    const row = await db.job.findFirst({
+        where: { kind, status: 'SUCCEEDED', finishedAt: { not: null } },
+        orderBy: { finishedAt: 'desc' },
+        select: { finishedAt: true },
+    })
+    return row?.finishedAt ?? null
 }
 
 export const jobLastCreatedAt = async (kind: string): Promise<Date | null> => {
