@@ -268,6 +268,37 @@ describe('deriveChartWeek against the fixtures', () => {
     })
 })
 
+describe('deriveChartWeek edge cases', () => {
+    it('takes the season from a matched fixture, not from round words in the title', () => {
+        expect(derive('HAM', 'Week 1, Grey Cup rematch, Thu June 4 vs MTL')).toMatchObject({
+            season: 'regular',
+            week: 1,
+            source: 'fixture',
+        })
+    })
+
+    it('calls a date well before the opener preseason, whatever week the filename prints', () => {
+        expect(
+            derive('BC', 'Game 2, Fri, May 30', 'https://x/Depth-and-Roster-Week2EDM.pdf'),
+        ).toMatchObject({ season: 'pre', week: 1 })
+    })
+
+    it('reads "PS-1" in a title as preseason', () => {
+        expect(derive('MTL', 'PS-1, Friday, May 22, Ottawa')).toMatchObject({
+            season: 'pre',
+            week: 1,
+            source: 'preseason',
+        })
+    })
+
+    it('lets the printed week choose between two games against the named opponent', () => {
+        // SSK @ MTL on Oct 12 (week 19) and MTL @ SSK on Oct 17 (week 20).
+        const d = derive('SSK', 'Week 20, Oct 14, MTL @ SSK')!
+        expect(d).toMatchObject({ week: 20, source: 'fixture' })
+        expect(d.evidence).not.toContain('DISAGREES')
+    })
+})
+
 describe('deriveChartWeek without a fixture', () => {
     // A club with no matches in the schedule, so only dates and words count.
     const nofix = (title: string, href = 'https://x/a.pdf') =>

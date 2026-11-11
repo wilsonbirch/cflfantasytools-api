@@ -242,8 +242,8 @@ function printedWeek(s: string): { week: number; text: string } | null {
 }
 
 // "PS" alone is too short to trust ("PS additions", "TOR-vs-HAM-PS.pdf"); it
-// counts only as "PS Week 1" / "PS-1".
-const PRESEASON = /pre[\s-]?season|(?<![a-z])ps\s*(?:week\s*)?\d/i
+// counts only as "PS Week 1" / "PS-1" / "PS_1", in a title or a filename.
+const PRESEASON = /pre[\s_-]?season|(?<![a-z])ps[\s_-]*(?:week[\s_-]*)?\d/i
 // Bare "playoff" is not a round: "Playoff push: Week 20" is a regular-season game.
 const SEMI_FINAL = /semi[\s-]?final|(?<![a-z])(?:esf|wsf)(?![a-z])/i
 const DIVISION_FINAL = /(?<![a-z])(?:eastern|western|east|west|division(?:al)?)\s*final/i
@@ -332,14 +332,14 @@ const FIXTURE_SLACK_SAME_OPPONENT = 3
 // A printed date this many days or more before the first match day is preseason.
 const PRESEASON_GAP = 4
 
-/** The week a day falls in, by match-day windows. Null for preseason. */
+/** The week a day on or after the preseason cutoff falls in, by match-day windows. */
 function weekByDate(
     day: number,
     windows: WeekWindow[],
-): { week: number; season: ChartSeason; how: string } | null {
-    const first = windows[0]
+): { week: number; season: ChartSeason; how: string } {
+    // A date well before the opener is preseason; the caller has already
+    // returned for it.
     const last = windows.at(-1)!
-    if (day <= first.start - PRESEASON_GAP) return null
     const inside = windows.find((w) => day >= w.start && day <= w.end)
     if (inside)
         return { week: inside.week, season: 'regular', how: `in week ${inside.week}'s games` }
@@ -396,13 +396,23 @@ export function deriveChartWeek(input: ChartInput, schedule: ChartSchedule): Cha
             .filter(
                 (c) => c.off <= FIXTURE_SLACK || (c.named && c.off <= FIXTURE_SLACK_SAME_OPPONENT),
             )
-            .sort((a, b) => Number(b.named) - Number(a.named) || a.off - b.off)
+            // The named opponent first; then, when two games against it are in
+            // reach (home and away five days apart), the week the club printed;
+            // then the nearer date.
+            .sort(
+                (a, b) =>
+                    Number(b.named) - Number(a.named) ||
+                    Number(b.m.week === pw?.week) - Number(a.m.week === pw?.week) ||
+                    a.off - b.off,
+            )
         const pick = candidates[0]
         if (pick) {
             if (opponent && pick.vs !== opponent) {
                 notes.push(`fixture opponent is ${pick.vs}, title says ${opponent}`)
             }
-            const post = round !== null || (last !== undefined && date.day > last.end + 1)
+            // The fixture decides the season, not words in the title: "Grey Cup
+            // rematch" on a June game is still a regular-season chart.
+            const post = last !== undefined && date.day > last.end + 1
             return done(
                 pick.m.week,
                 post ? 'post' : 'regular',
@@ -415,7 +425,16 @@ export function deriveChartWeek(input: ChartInput, schedule: ChartSchedule): Cha
     // 2. A preseason game: not in the feed, always week 1.
     if (preseason) return done(1, 'pre', 'preseason', 'preseason marker → week 1')
 
+    // ...and so is a date well before the opener, whatever week number the
+    // filename carries ("Game 2, Fri, May 30" in "…Week2…pdf").
+    if (date && last && date.day <= windows[0].start - PRESEASON_GAP) {
+        return done(1, 'pre', 'gameweek', 'before the first games → preseason')
+    }
+
     // 3. A playoff round, counted on from the regular season's last week.
+    // ASSUMES the last week with games is the regular season's last: the feed
+    // carries no playoff matches today. If it ever does, those charts match
+    // their fixtures in step 1 and never get here.
     if (round && last) {
         return done(
             last.week + round,
@@ -434,7 +453,6 @@ export function deriveChartWeek(input: ChartInput, schedule: ChartSchedule): Cha
         // 5. The week whose games the date falls among.
         if (last) {
             const byDate = weekByDate(date.day, windows)
-            if (!byDate) return done(1, 'pre', 'gameweek', 'before the first games → preseason')
             return done(
                 byDate.week,
                 byDate.season,
