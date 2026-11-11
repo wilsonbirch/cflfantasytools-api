@@ -10,10 +10,15 @@
  * week copied onto its DepthChartPosition rows). A chart that says nothing
  * usable is left as it is.
  *
+ * A year with no Gameweek rows (the legacy 2024/2025 seasons) can only be
+ * re-derived from printed weeks and hardcoded date math, which would overwrite
+ * weeks 3DF recorded live. --apply refuses such a year unless
+ * --allow-date-math is given as well.
+ *
  * DATABASE_URL must be given explicitly — the script never reads .env:
  *
  *   DATABASE_URL=postgres://… npx tsx --env-file-if-exists=/dev/null \
- *       scripts/rederiveDepthChartWeeks.ts --year 2026 [--team SSK] [--changed] [--apply]
+ *       scripts/rederiveDepthChartWeeks.ts --year 2026 [--team SSK] [--changed] [--apply [--allow-date-math]]
  */
 import { parseArgs } from 'node:util'
 
@@ -23,6 +28,7 @@ const { values } = parseArgs({
         team: { type: 'string' },
         apply: { type: 'boolean', default: false },
         changed: { type: 'boolean', default: false },
+        'allow-date-math': { type: 'boolean', default: false },
     },
 })
 
@@ -62,6 +68,14 @@ if (gameweeks === 0) {
     console.log(
         'WARNING: no gameweeks for this year — weeks fall back to printed weeks and date math',
     )
+    if (values.apply && !values['allow-date-math']) {
+        console.error(
+            'Refusing to --apply without gameweeks: that would overwrite weeks from date math. ' +
+                'Review the dry run, then add --allow-date-math if you really mean it.',
+        )
+        await db.$disconnect()
+        process.exit(1)
+    }
 }
 
 const rows = await rederiveChartWeeks({ year, team, apply: values.apply })

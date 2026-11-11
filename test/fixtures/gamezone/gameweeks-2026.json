@@ -1,0 +1,1022 @@
+[
+    {
+        "id": 1,
+        "feedId": 1420012,
+        "name": "Week 1",
+        "status": "complete",
+        "startDate": "2026-06-06T19:00:00-04:00",
+        "endDate": "2026-06-09T12:47:48-04:00",
+        "matches": [
+            {
+                "id": 1,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-06-04T19:30:00-04:00"
+            },
+            {
+                "id": 2,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-06-05T21:00:00-04:00"
+            },
+            {
+                "id": 3,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-06-06T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "feedId": 1420013,
+        "name": "Week 2",
+        "status": "complete",
+        "startDate": "2026-06-13T19:00:00-04:00",
+        "endDate": "2026-06-16T15:17:59-04:00",
+        "matches": [
+            {
+                "id": 4,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-06-11T20:30:00-04:00"
+            },
+            {
+                "id": 5,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-06-12T19:00:00-04:00"
+            },
+            {
+                "id": 6,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-06-13T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "feedId": 1420014,
+        "name": "Week 3",
+        "status": "complete",
+        "startDate": "2026-06-20T13:00:00-04:00",
+        "endDate": "2026-06-23T12:21:29-04:00",
+        "matches": [
+            {
+                "id": 7,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-06-19T19:30:00-04:00"
+            },
+            {
+                "id": 8,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-06-20T13:00:00-04:00"
+            },
+            {
+                "id": 9,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-06-20T16:00:00-04:00"
+            },
+            {
+                "id": 10,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-06-20T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 4,
+        "feedId": 1420015,
+        "name": "Week 4",
+        "status": "complete",
+        "startDate": "2026-06-26T21:00:00-04:00",
+        "endDate": "2026-06-30T14:17:34-04:00",
+        "matches": [
+            {
+                "id": 11,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-06-25T20:30:00-04:00"
+            },
+            {
+                "id": 13,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-06-27T19:00:00-04:00"
+            },
+            {
+                "id": 14,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-06-28T19:00:00-04:00"
+            },
+            {
+                "id": 85,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-06-26T21:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 5,
+        "feedId": 1420016,
+        "name": "Week 5",
+        "status": "complete",
+        "startDate": "2026-07-05T19:00:00-04:00",
+        "endDate": "2026-07-07T13:21:24-04:00",
+        "matches": [
+            {
+                "id": 15,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-07-02T21:00:00-04:00"
+            },
+            {
+                "id": 16,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-07-03T19:30:00-04:00"
+            },
+            {
+                "id": 17,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-07-04T19:00:00-04:00"
+            },
+            {
+                "id": 18,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-07-05T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 6,
+        "feedId": 1420017,
+        "name": "Week 6",
+        "status": "complete",
+        "startDate": "2026-07-10T20:30:00-04:00",
+        "endDate": "2026-07-14T11:29:40-04:00",
+        "matches": [
+            {
+                "id": 19,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-07-09T21:00:00-04:00"
+            },
+            {
+                "id": 21,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-07-11T19:00:00-04:00"
+            },
+            {
+                "id": 22,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-07-12T19:00:00-04:00"
+            },
+            {
+                "id": 86,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-07-10T20:30:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 7,
+        "feedId": 1420018,
+        "name": "Week 7",
+        "status": "complete",
+        "startDate": "2026-07-18T16:00:00-04:00",
+        "endDate": "2026-07-21T10:58:54-04:00",
+        "matches": [
+            {
+                "id": 23,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-07-17T21:00:00-04:00"
+            },
+            {
+                "id": 24,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-07-18T16:00:00-04:00"
+            },
+            {
+                "id": 26,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-07-19T19:00:00-04:00"
+            },
+            {
+                "id": 87,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-07-18T19:30:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 8,
+        "feedId": 1420019,
+        "name": "Week 8",
+        "status": "complete",
+        "startDate": "2026-07-26T19:00:00-04:00",
+        "endDate": "2026-07-28T12:16:49-04:00",
+        "matches": [
+            {
+                "id": 27,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-07-23T21:00:00-04:00"
+            },
+            {
+                "id": 28,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-07-24T20:30:00-04:00"
+            },
+            {
+                "id": 29,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-07-25T19:00:00-04:00"
+            },
+            {
+                "id": 30,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-07-26T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 9,
+        "feedId": 1420020,
+        "name": "Week 9",
+        "status": "complete",
+        "startDate": "2026-08-01T15:00:00-04:00",
+        "endDate": "2026-08-04T13:36:01-04:00",
+        "matches": [
+            {
+                "id": 31,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-07-30T20:30:00-04:00"
+            },
+            {
+                "id": 32,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-07-31T19:30:00-04:00"
+            },
+            {
+                "id": 33,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-08-01T15:00:00-04:00"
+            },
+            {
+                "id": 34,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-08-01T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 10,
+        "feedId": 1420021,
+        "name": "Week 10",
+        "status": "complete",
+        "startDate": "2026-08-08T15:00:00-04:00",
+        "endDate": "2026-08-11T12:22:18-04:00",
+        "matches": [
+            {
+                "id": 35,
+                "homeSquad": {
+                    "abbr": "TOR"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-08-06T19:30:00-04:00"
+            },
+            {
+                "id": 36,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-08-07T21:00:00-04:00"
+            },
+            {
+                "id": 37,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-08-08T15:00:00-04:00"
+            },
+            {
+                "id": 38,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-08-08T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 11,
+        "feedId": 1420022,
+        "name": "Week 11",
+        "status": "complete",
+        "startDate": "2026-08-15T15:00:00-04:00",
+        "endDate": "2026-08-18T12:32:06-04:00",
+        "matches": [
+            {
+                "id": 39,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-08-13T21:00:00-04:00"
+            },
+            {
+                "id": 40,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-08-14T20:30:00-04:00"
+            },
+            {
+                "id": 41,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-08-15T15:00:00-04:00"
+            },
+            {
+                "id": 42,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-08-15T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 12,
+        "feedId": 1420023,
+        "name": "Week 12",
+        "status": "complete",
+        "startDate": "2026-08-23T19:00:00-04:00",
+        "endDate": "2026-08-25T12:22:04-04:00",
+        "matches": [
+            {
+                "id": 43,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-08-20T19:30:00-04:00"
+            },
+            {
+                "id": 44,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-08-21T21:30:00-04:00"
+            },
+            {
+                "id": 45,
+                "homeSquad": {
+                    "abbr": "TOR"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-08-22T19:00:00-04:00"
+            },
+            {
+                "id": 46,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-08-23T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 13,
+        "feedId": 1420024,
+        "name": "Week 13",
+        "status": "complete",
+        "startDate": "2026-08-30T19:00:00-04:00",
+        "endDate": "2026-09-01T13:02:37-04:00",
+        "matches": [
+            {
+                "id": 47,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-08-28T20:30:00-04:00"
+            },
+            {
+                "id": 48,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-08-29T15:00:00-04:00"
+            },
+            {
+                "id": 49,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-08-29T19:00:00-04:00"
+            },
+            {
+                "id": 50,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-08-30T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 14,
+        "feedId": 1420025,
+        "name": "Week 14",
+        "status": "complete",
+        "startDate": "2026-09-07T14:30:00-04:00",
+        "endDate": "2026-09-08T17:02:24-04:00",
+        "matches": [
+            {
+                "id": 51,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-09-04T19:30:00-04:00"
+            },
+            {
+                "id": 52,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-09-06T19:00:00-04:00"
+            },
+            {
+                "id": 53,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-09-07T14:30:00-04:00"
+            },
+            {
+                "id": 54,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-09-07T18:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 15,
+        "feedId": 1420026,
+        "name": "Week 15",
+        "status": "complete",
+        "startDate": "2026-09-12T16:00:00-04:00",
+        "endDate": "2026-09-15T10:51:54-04:00",
+        "matches": [
+            {
+                "id": 55,
+                "homeSquad": {
+                    "abbr": "TOR"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-09-12T13:00:00-04:00"
+            },
+            {
+                "id": 56,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-09-12T16:00:00-04:00"
+            },
+            {
+                "id": 57,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-09-12T19:00:00-04:00"
+            },
+            {
+                "id": 58,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-09-12T22:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 16,
+        "feedId": 1420027,
+        "name": "Week 16",
+        "status": "complete",
+        "startDate": "2026-09-19T15:00:00-04:00",
+        "endDate": "2026-09-22T12:29:29-04:00",
+        "matches": [
+            {
+                "id": 59,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-09-18T19:30:00-04:00"
+            },
+            {
+                "id": 60,
+                "homeSquad": {
+                    "abbr": "TOR"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-09-19T15:00:00-04:00"
+            },
+            {
+                "id": 61,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-09-19T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 17,
+        "feedId": 1420028,
+        "name": "Week 17",
+        "status": "complete",
+        "startDate": "2026-09-26T15:00:00-04:00",
+        "endDate": "2026-09-29T17:28:51-04:00",
+        "matches": [
+            {
+                "id": 62,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-09-25T20:00:00-04:00"
+            },
+            {
+                "id": 63,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-09-25T22:30:00-04:00"
+            },
+            {
+                "id": 64,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-09-26T15:00:00-04:00"
+            },
+            {
+                "id": 65,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-09-26T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 18,
+        "feedId": 1420029,
+        "name": "Week 18",
+        "status": "complete",
+        "startDate": "2026-10-03T15:00:00-04:00",
+        "endDate": "2026-10-06T11:37:22-04:00",
+        "matches": [
+            {
+                "id": 66,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "HAM"
+                },
+                "date": "2026-10-02T19:00:00-04:00"
+            },
+            {
+                "id": 67,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-10-02T21:30:00-04:00"
+            },
+            {
+                "id": 68,
+                "homeSquad": {
+                    "abbr": "TOR"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-10-03T15:00:00-04:00"
+            },
+            {
+                "id": 69,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-10-03T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 19,
+        "feedId": 1420030,
+        "name": "Week 19",
+        "status": "complete",
+        "startDate": "2026-10-12T13:00:00-04:00",
+        "endDate": "2026-10-14T09:37:14-04:00",
+        "matches": [
+            {
+                "id": 70,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-10-09T19:00:00-04:00"
+            },
+            {
+                "id": 71,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-10-09T22:00:00-04:00"
+            },
+            {
+                "id": 72,
+                "homeSquad": {
+                    "abbr": "WPG"
+                },
+                "awaySquad": {
+                    "abbr": "CGY"
+                },
+                "date": "2026-10-10T19:00:00-04:00"
+            },
+            {
+                "id": 73,
+                "homeSquad": {
+                    "abbr": "MTL"
+                },
+                "awaySquad": {
+                    "abbr": "SSK"
+                },
+                "date": "2026-10-12T13:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 20,
+        "feedId": 1420031,
+        "name": "Week 20",
+        "status": "complete",
+        "startDate": "2026-10-17T15:00:00-04:00",
+        "endDate": "2026-10-20T12:00:32-04:00",
+        "matches": [
+            {
+                "id": 74,
+                "homeSquad": {
+                    "abbr": "OTT"
+                },
+                "awaySquad": {
+                    "abbr": "TOR"
+                },
+                "date": "2026-10-16T19:00:00-04:00"
+            },
+            {
+                "id": 75,
+                "homeSquad": {
+                    "abbr": "EDM"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-10-16T21:30:00-04:00"
+            },
+            {
+                "id": 76,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-10-17T15:00:00-04:00"
+            },
+            {
+                "id": 77,
+                "homeSquad": {
+                    "abbr": "CGY"
+                },
+                "awaySquad": {
+                    "abbr": "BC"
+                },
+                "date": "2026-10-17T19:00:00-04:00"
+            }
+        ]
+    },
+    {
+        "id": 21,
+        "feedId": 1420032,
+        "name": "Week 21",
+        "status": "playing",
+        "startDate": "2026-10-24T15:00:00-04:00",
+        "endDate": "2026-10-24T18:00:00-04:00",
+        "matches": [
+            {
+                "id": 78,
+                "homeSquad": {
+                    "abbr": "TOR"
+                },
+                "awaySquad": {
+                    "abbr": "MTL"
+                },
+                "date": "2026-10-23T19:00:00-04:00"
+            },
+            {
+                "id": 79,
+                "homeSquad": {
+                    "abbr": "BC"
+                },
+                "awaySquad": {
+                    "abbr": "WPG"
+                },
+                "date": "2026-10-23T22:00:00-04:00"
+            },
+            {
+                "id": 80,
+                "homeSquad": {
+                    "abbr": "HAM"
+                },
+                "awaySquad": {
+                    "abbr": "OTT"
+                },
+                "date": "2026-10-24T15:00:00-04:00"
+            },
+            {
+                "id": 81,
+                "homeSquad": {
+                    "abbr": "SSK"
+                },
+                "awaySquad": {
+                    "abbr": "EDM"
+                },
+                "date": "2026-10-24T15:00:00-04:00"
+            }
+        ]
+    }
+]

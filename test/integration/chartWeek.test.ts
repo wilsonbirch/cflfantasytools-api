@@ -1,28 +1,60 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { TEAMS } from '~/data/teams'
 import { db } from '~/lib/db.server'
 import { checkTeam } from '~/services/depthCharts/checkTeam.server'
 import { rederiveChartWeeks } from '~/services/depthCharts/chartWeek.server'
 
-// 2026 as Tuesday–Monday gameweeks (week 1 = June 2–8), the first `complete`
-// ones marked so: what the Game Zone sync leaves in the table. Inserted
-// newest first, so a row's id is NOT its week — the ordinal comes from the
-// dates. Returns the ids indexed by week - 1.
-async function seedGameweeks(completeThrough = 21) {
-    const ids: number[] = []
-    for (let i = 20; i >= 0; i--) {
+// The real 2026 Game Zone schedule (trimmed gameweeks.json): 21 gameweeks, 81
+// matches, no playoffs — loaded the way syncGameZone stores it. Gameweeks go in
+// newest first, so a row's id is NOT its week: the ordinal comes from the
+// dates. `completeThrough` marks that many weeks complete, the rest upcoming.
+type FeedGameweek = {
+    id: number
+    name: string
+    startDate: string
+    endDate: string
+    matches: {
+        id: number
+        homeSquad: { abbr: string }
+        awaySquad: { abbr: string }
+        date: string
+    }[]
+}
+const FEED = JSON.parse(
+    readFileSync('test/fixtures/gamezone/gameweeks-2026.json', 'utf8'),
+) as FeedGameweek[]
+
+async function seedRealSchedule(completeThrough = 21) {
+    const teams = new Map<string, number>()
+    for (const t of TEAMS) teams.set(t.abbreviation, (await team(t.abbreviation)).id)
+    const ordered = [...FEED].sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
+    for (const [i, g] of [...ordered.entries()].reverse()) {
         const gw = await db.gameweek.create({
             data: {
-                gameZoneId: 100 + i,
-                name: `Week ${i + 1}`,
+                gameZoneId: g.id,
+                name: g.name,
                 status: i < completeThrough ? 'complete' : 'upcoming',
                 year: 2026,
-                startDate: new Date(Date.UTC(2026, 5, 2 + 7 * i, 16)),
-                endDate: new Date(Date.UTC(2026, 5, 8 + 7 * i, 23)),
+                startDate: new Date(g.startDate),
+                endDate: new Date(g.endDate),
             },
         })
-        ids[i] = gw.id
+        for (const m of g.matches) {
+            await db.match.create({
+                data: {
+                    gameZoneId: m.id,
+                    gameweekId: gw.id,
+                    homeTeamId: teams.get(m.homeSquad.abbr),
+                    awayTeamId: teams.get(m.awaySquad.abbr),
+                    status: 'complete',
+                    year: 2026,
+                    date: new Date(m.date),
+                },
+            })
+        }
     }
-    return ids
+    return teams
 }
 
 const team = (abbreviation: string) =>
@@ -30,22 +62,9 @@ const team = (abbreviation: string) =>
 
 describe('rederiveChartWeeks', () => {
     async function seed() {
-        const gameweeks = await seedGameweeks()
-        const ssk = await team('SSK')
-        const wpg = await team('WPG')
-        const cgy = await team('CGY')
-        // The Labour Day Classic, in gameweek 14 (row id 8).
-        await db.match.create({
-            data: {
-                gameZoneId: 1,
-                gameweekId: gameweeks[13],
-                homeTeamId: ssk.id,
-                awayTeamId: wpg.id,
-                status: 'complete',
-                year: 2026,
-                date: new Date('2026-09-06T20:00:00Z'),
-            },
-        })
+        const teams = await seedRealSchedule()
+        const ssk = teams.get('SSK')!
+        const cgy = teams.get('CGY')!
         const chart = async (teamId: number, title: string, season: string, week: number) => {
             const list = await db.depthChartList.upsert({
                 where: { teamId_year: { teamId, year: 2026 } },
@@ -65,16 +84,11 @@ describe('rederiveChartWeeks', () => {
             })
         }
         // As the November 2026 backfill stored them: the week they were seen.
-        const ldc = await chart(ssk.id, 'Week 14 (LDC), Sunday, Sept 6, WPG @ SSK', 'post', 21)
-        const wsf = await chart(
-            ssk.id,
-            'Western Semi-Final, Saturday, Oct 31, SSK @ BC',
-            'post',
-            21,
-        )
-        const blank = await chart(ssk.id, 'Depth chart', 'regular', 7)
-        const right = await chart(ssk.id, 'Week 3, Saturday, June 20, SSK @ CGY', 'regular', 3)
-        const cgyChart = await chart(cgy.id, 'Game 12, EDM, CGY', 'post', 21)
+        const ldc = await chart(ssk, 'Week 14 (LDC), Sunday, Sept 6, WPG @ SSK', 'post', 21)
+        const wsf = await chart(ssk, 'Western Semi-Final, Saturday, Oct 31, SSK @ BC', 'post', 21)
+        const blank = await chart(ssk, 'Depth chart', 'regular', 7)
+        const right = await chart(ssk, 'Week 3, Saturday, June 20, SSK @ CGY', 'regular', 3)
+        const cgyChart = await chart(cgy, 'Game 12, EDM, CGY', 'post', 21)
         await db.depthChart.update({
             where: { id: cgyChart.id },
             data: { value: 'https://static.cfl.ca/260907-vsEDM-position-chart.pdf' },
@@ -86,7 +100,7 @@ describe('rederiveChartWeeks', () => {
             await db.depthChartPosition.create({
                 data: {
                     depthChartId: ldc.id,
-                    teamId: ssk.id,
+                    teamId: ssk,
                     year: 2026,
                     week: 21,
                     position,
@@ -145,6 +159,34 @@ describe('rederiveChartWeeks', () => {
         expect(rows.map((r) => r.team)).toEqual(['CGY'])
         expect(await db.depthChart.count({ where: { week: 21 } })).toBe(2)
     })
+
+    it('puts both sides of a playoff game in the same week', async () => {
+        const teams = await seedRealSchedule()
+        // The 2026 Western Final, as BC (a day early) and Edmonton (no round) titled it.
+        const make = async (abbr: string, title: string) => {
+            const teamId = teams.get(abbr)!
+            const list = await db.depthChartList.create({ data: { teamId, year: 2026 } })
+            return db.depthChart.create({
+                data: {
+                    teamId,
+                    depthChartListId: list.id,
+                    title,
+                    value: `https://example.test/${abbr}.pdf`,
+                    year: 2026,
+                    season: 'post',
+                    week: 21,
+                },
+            })
+        }
+        await make('BC', 'Western Final, Sat, Nov 06, BC @ EDM')
+        await make('EDM', '11.07.2026 | Depth Chart: VS BC Lions')
+        await rederiveChartWeeks({ year: 2026, apply: true })
+        const weeks = await db.depthChart.findMany({ select: { season: true, week: true } })
+        expect(weeks).toEqual([
+            { season: 'post', week: 23 },
+            { season: 'post', week: 23 },
+        ])
+    })
 })
 
 describe('checkTeam stamps new charts with their game week', () => {
@@ -165,8 +207,8 @@ describe('checkTeam stamps new charts with their game week', () => {
 
     it('reads the week from the chart, and falls back to the week it was seen', async () => {
         // Gameweeks 1–15 complete, so "now" (first not complete) is week 16.
-        await seedGameweeks(15)
-        const cgy = await team('CGY')
+        const teams = await seedRealSchedule(15)
+        const cgy = { id: teams.get('CGY')! }
         await db.teamSource.create({
             data: {
                 teamId: cgy.id,

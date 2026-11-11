@@ -8,30 +8,36 @@
 //
 // Every club prints the game a chart is for somewhere — a date in the link
 // text (eight clubs), a YYMMDD prefix on the filename (Calgary, whose link
-// text has none), and often a week number or the opponent as well. This
-// module reads those signals and maps them onto the schedule. PURE: the
-// schedule is passed in, so the same code runs in the sweep, the repair
-// script and the tests.
+// text has none), and often a week number, the opponent, or the playoff round
+// as well. This module reads those signals and maps them onto the schedule.
+// PURE: the schedule is passed in, so the same code runs in the sweep, the
+// repair script and the tests.
 //
 // Precedence, strongest first:
-//   1. fixture       the printed game date (±1 day, for club typos) matches one
-//                    of the club's scheduled matches → that match's gameweek
-//   2. gameweek      the printed date falls in a gameweek's date range; before
-//                    the first is preseason, after the last counts on in
-//                    7-day steps (semi-finals 22, finals 23, Grey Cup 24)
-//   3. printed-week  "Week 14" / "WK16" / "W5" in the link text or filename
-//   4. date-math     the printed date through getDepthChartInfo's hardcoded
-//                    boundaries — only when the season has no gameweeks
-//   (5. first-seen   not here: the caller's fallback when this returns null)
-//
-// A preseason marker ("Preseason", "PRE-SEASON", "PS Week 1") wins outright:
-// season 'pre', week 1 — the value a chart caught live in May has always got.
+//   1. fixture        the printed date matches one of the club's own scheduled
+//                     matches — within a day, or within three against the
+//                     opponent the chart names — → that match's gameweek
+//   2. preseason      "Preseason" / "PRE-SEASON" / "PS Week 1" / "PS-1"
+//                     → season 'pre', week 1 (what a chart caught live in May
+//                     has always got)
+//   3. playoff-round  "Semi-Final" / "Western Final" / "Grey Cup" → 1, 2 or 3
+//                     weeks after the last gameweek. The Game Zone feed has no
+//                     playoff matches, and clubs print playoff dates a day out
+//                     either way, so the round is the reliable signal
+//   4. printed-week   "Week 14" / "WK16" / "W5" in the link text or filename
+//   5. gameweek       the printed date against each gameweek's match days;
+//                     well before the first is preseason, after the last
+//                     rounds to whole weeks past it
+//   6. date-math      the printed date through getDepthChartInfo's hardcoded
+//                     boundaries — only when the season has no gameweeks
+//   (7. first-seen    not here: the caller's fallback when this returns null)
 
 import { getDepthChartInfo, type DepthChartInfo } from './season.server'
 
 export type ChartSeason = DepthChartInfo['season']
 
-export type ChartWeekSource = 'preseason' | 'fixture' | 'gameweek' | 'printed-week' | 'date-math'
+export type ChartWeekSource =
+    'fixture' | 'preseason' | 'playoff-round' | 'printed-week' | 'gameweek' | 'date-math'
 
 export type ChartWeek = DepthChartInfo & {
     source: ChartWeekSource
@@ -69,11 +75,15 @@ export type ChartInput = {
     page?: string | null
 }
 
+/** Playoff rounds, counted in weeks after the regular season's last gameweek. */
+export type PlayoffRound = 1 | 2 | 3
+
 export type ChartSignals = {
     date: { day: number; text: string; from: 'title' | 'filename' | 'page' } | null
     printedWeek: { week: number; text: string; from: 'title' | 'filename' } | null
     opponent: string | null
-    stage: 'pre' | 'post' | null
+    preseason: boolean
+    round: PlayoffRound | null
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -107,6 +117,45 @@ export function easternDay(at: Date): number {
 }
 
 export const dayToIso = (day: number): string => new Date(day * DAY_MS).toISOString().slice(0, 10)
+
+// --- the schedule as windows of match days -----------------------------------
+// A Game Zone gameweek's startDate is one of its kickoffs — not the first:
+// week 1 2026 starts Saturday June 6, but the opener was Thursday June 4 — and
+// its endDate is the close-out, usually the Tuesday after. Neither bounds the
+// games, so a week's window is built from its matches' days instead. A week
+// with no matches falls back to two days either side of its startDate — the
+// span a CFL week's Thursday-to-Monday games cover around any one of them.
+// endDate is deliberately unused.
+
+const NO_MATCH_HALF_WIDTH = 2
+
+export type WeekWindow = { week: number; start: number; end: number }
+
+export function weekWindows(schedule: ChartSchedule): WeekWindow[] {
+    const days = new Map<number, number[]>()
+    for (const m of schedule.matches) {
+        days.set(m.week, [...(days.get(m.week) ?? []), easternDay(m.date)])
+    }
+    for (const g of schedule.gameweeks) {
+        if (days.has(g.week) || !g.startDate) continue
+        const start = easternDay(g.startDate)
+        days.set(g.week, [start - NO_MATCH_HALF_WIDTH, start + NO_MATCH_HALF_WIDTH])
+    }
+    return [...days]
+        .map(([week, d]) => ({ week, start: Math.min(...d), end: Math.max(...d) }))
+        .sort((a, b) => a.start - b.start)
+}
+
+// Dates a chart can be for: preseason runs a few weeks ahead of the first
+// gameweek, the Grey Cup three weeks after the last. Without a schedule, May
+// to November.
+const SPAN_BEFORE = 35
+const SPAN_AFTER = 28
+
+export function seasonSpan(windows: WeekWindow[], year: number): { from: number; to: number } {
+    if (windows.length === 0) return { from: dayOf(year, 4, 1)!, to: dayOf(year, 10, 30)! }
+    return { from: windows[0].start - SPAN_BEFORE, to: windows.at(-1)!.end + SPAN_AFTER }
+}
 
 // --- reading the signals ----------------------------------------------------
 
@@ -153,12 +202,19 @@ function numericDate(s: string, year: number): { day: number; text: string } | n
     return null
 }
 
-/** Calgary: "260605-vsWPG-position-chart.pdf" — YYMMDD leading the filename. */
-function yymmdd(file: string, year: number): { day: number; text: string } | null {
+/**
+ * Calgary: "260605-vsWPG-position-chart.pdf" — YYMMDD leading the filename.
+ * Six bare digits could be anything, so only a date inside the season counts.
+ */
+function yymmdd(
+    file: string,
+    year: number,
+    span: { from: number; to: number },
+): { day: number; text: string } | null {
     const m = file.match(/^(\d{2})(\d{2})(\d{2})(?!\d)/)
     if (!m || Number(m[1]) !== year % 100) return null
     const day = dayOf(year, Number(m[2]) - 1, Number(m[3]))
-    return day === null ? null : { day, text: m[0] }
+    return day === null || day < span.from || day > span.to ? null : { day, text: m[0] }
 }
 
 /** The last path segment, decoded, with separators turned into spaces. */
@@ -185,9 +241,20 @@ function printedWeek(s: string): { week: number; text: string } | null {
     return week >= 1 && week <= 30 ? { week, text: m[0] } : null
 }
 
-const PRESEASON = /(?<![a-z])(pre[\s-]?season|ps)(?![a-z])/i
-const POSTSEASON =
-    /(?<![a-z])(semi[\s-]?final|(?:eastern|western|east|west|division(?:al)?)\s+final|grey\s+cup|playoffs?|esf|wsf)(?![a-z])/i
+// "PS" alone is too short to trust ("PS additions", "TOR-vs-HAM-PS.pdf"); it
+// counts only as "PS Week 1" / "PS-1".
+const PRESEASON = /pre[\s-]?season|(?<![a-z])ps\s*(?:week\s*)?\d/i
+// Bare "playoff" is not a round: "Playoff push: Week 20" is a regular-season game.
+const SEMI_FINAL = /semi[\s-]?final|(?<![a-z])(?:esf|wsf)(?![a-z])/i
+const DIVISION_FINAL = /(?<![a-z])(?:eastern|western|east|west|division(?:al)?)\s*final/i
+const GREY_CUP = /grey\s*cup/i
+
+function playoffRound(...texts: string[]): PlayoffRound | null {
+    if (texts.some((t) => SEMI_FINAL.test(t))) return 1
+    if (texts.some((t) => DIVISION_FINAL.test(t))) return 2
+    if (texts.some((t) => GREY_CUP.test(t))) return 3
+    return null
+}
 
 // Every way a club names another club in its link text.
 const TEAM_ALIASES: [string, string[]][] = [
@@ -212,8 +279,14 @@ function opponentIn(title: string, team: string): string | null {
     return named.length === 1 ? named[0][0] : null
 }
 
-/** Everything a chart's link text, filename and article URL say about its game. PURE. */
-export function readChartSignals(input: ChartInput): ChartSignals {
+/**
+ * Everything a chart's link text, filename and article URL say about its game.
+ * `span` bounds the dates a bare YYMMDD filename prefix may mean. PURE.
+ */
+export function readChartSignals(
+    input: ChartInput,
+    span = seasonSpan([], input.year),
+): ChartSignals {
     const { title, href, page, year } = input
     const file = fileWords(href)
 
@@ -222,7 +295,9 @@ export function readChartSignals(input: ChartInput): ChartSignals {
     if (fromTitle) date = { ...fromTitle, from: 'title' }
     else {
         const fromFile =
-            yymmdd(rawFile(href), year) ?? numericDate(rawFile(href), year) ?? monthDay(file, year)
+            yymmdd(rawFile(href), year, span) ??
+            numericDate(rawFile(href), year) ??
+            monthDay(file, year)
         if (fromFile) date = { ...fromFile, from: 'filename' }
         else if (page) {
             const fromPage = numericDate(rawFile(page), year)
@@ -238,59 +313,50 @@ export function readChartSignals(input: ChartInput): ChartSignals {
           ? { ...wFile, from: 'filename' }
           : null
 
-    const stage =
-        PRESEASON.test(title) || PRESEASON.test(file)
-            ? 'pre'
-            : POSTSEASON.test(title) || POSTSEASON.test(file)
-              ? 'post'
-              : null
-
-    return { date, printedWeek: pw, opponent: opponentIn(title, input.team), stage }
+    return {
+        date,
+        printedWeek: pw,
+        opponent: opponentIn(title, input.team),
+        preseason: PRESEASON.test(title) || PRESEASON.test(file),
+        round: playoffRound(title, file),
+    }
 }
 
 // --- mapping onto the schedule ---------------------------------------------
 
-type Range = { week: number; start: number; end: number }
+// How far a printed date may sit from the kickoff and still name that fixture:
+// a day for any of the club's games, three when it is against the opponent
+// the chart names. A club never plays the same opponent twice in four days.
+const FIXTURE_SLACK = 1
+const FIXTURE_SLACK_SAME_OPPONENT = 3
+// A printed date this many days or more before the first match day is preseason.
+const PRESEASON_GAP = 4
 
-const ranges = (gameweeks: ScheduleGameweek[]): Range[] =>
-    gameweeks
-        .filter((g) => g.startDate)
-        .map((g) => {
-            const start = easternDay(g.startDate!)
-            return { week: g.week, start, end: g.endDate ? easternDay(g.endDate) : start + 6 }
-        })
-        .sort((a, b) => a.start - b.start)
-
-/** The week a day falls in, by gameweek date ranges. Null before the first. */
+/** The week a day falls in, by match-day windows. Null for preseason. */
 function weekByDate(
     day: number,
-    gameweeks: Range[],
+    windows: WeekWindow[],
 ): { week: number; season: ChartSeason; how: string } | null {
-    const first = gameweeks[0]
-    const last = gameweeks.at(-1)!
-    // A day of slack either side absorbs a club printing the wrong date.
-    if (day < first.start - 1) return null
-    const inside = gameweeks.find((g) => day >= g.start && day <= g.end)
+    const first = windows[0]
+    const last = windows.at(-1)!
+    if (day <= first.start - PRESEASON_GAP) return null
+    const inside = windows.find((w) => day >= w.start && day <= w.end)
     if (inside)
-        return { week: inside.week, season: 'regular', how: `inside gameweek ${inside.week}` }
+        return { week: inside.week, season: 'regular', how: `in week ${inside.week}'s games` }
     if (day > last.end + 1) {
-        // Past the regular season: the playoffs are not gameweeks, so count on
-        // from the last one — semi-finals a week later, and so on.
-        const week = last.week + Math.max(1, Math.floor((day - last.start) / 7))
+        // Past the regular season, rounded to whole weeks from its last match day.
+        const after = Math.max(1, Math.round((day - last.end) / 7))
         return {
-            week,
+            week: last.week + after,
             season: 'post',
-            how: `${week - last.week} week(s) after gameweek ${last.week}`,
+            how: `${after} week(s) after week ${last.week}'s games`,
         }
     }
-    // In the gap between two gameweeks, or within the slack day: the nearest
-    // start or end wins; a tie goes to the upcoming week.
-    const nearest = [...gameweeks].sort(
-        (a, b) =>
-            Math.min(Math.abs(day - a.start), Math.abs(day - a.end)) -
-                Math.min(Math.abs(day - b.start), Math.abs(day - b.end)) || b.start - a.start,
-    )[0]
-    return { week: nearest.week, season: 'regular', how: `nearest gameweek ${nearest.week}` }
+    // Between two weeks' games (or within the slack): the nearer week wins, the
+    // upcoming one on a tie — a chart is posted ahead of its game.
+    const distance = (w: WeekWindow) => Math.min(Math.abs(day - w.start), Math.abs(day - w.end))
+    const nearest = [...windows].sort((a, b) => distance(a) - distance(b) || b.start - a.start)[0]
+    return { week: nearest.week, season: 'regular', how: `nearest to week ${nearest.week}'s games` }
 }
 
 const describeMatch = (m: ScheduleMatch): string =>
@@ -302,12 +368,15 @@ const describeMatch = (m: ScheduleMatch): string =>
  * was first seen. PURE.
  */
 export function deriveChartWeek(input: ChartInput, schedule: ChartSchedule): ChartWeek | null {
-    const signals = readChartSignals(input)
-    const { date, printedWeek: pw, opponent, stage } = signals
+    const windows = weekWindows(schedule)
+    const last = windows.at(-1)
+    const signals = readChartSignals(input, seasonSpan(windows, input.year))
+    const { date, printedWeek: pw, opponent, preseason, round } = signals
     const notes: string[] = []
     if (date) notes.push(`date "${date.text}" (${date.from}) = ${dayToIso(date.day)}`)
     if (pw) notes.push(`printed "${pw.text}" (${pw.from})`)
     if (opponent) notes.push(`opponent ${opponent}`)
+    if (round) notes.push(['semi-final', 'division final', 'Grey Cup'][round - 1])
     const done = (week: number, season: ChartSeason, source: ChartWeekSource, how: string) => {
         if (pw && source !== 'printed-week' && source !== 'preseason' && pw.week !== week) {
             notes.push(`printed week ${pw.week} DISAGREES`)
@@ -315,56 +384,69 @@ export function deriveChartWeek(input: ChartInput, schedule: ChartSchedule): Cha
         return { week, season, source, evidence: [...notes, how].join('; ') }
     }
 
-    if (stage === 'pre') return done(1, 'pre', 'preseason', 'preseason marker → week 1')
-
-    const gws = ranges(schedule.gameweeks)
-
+    // 1. The club's own fixture on (or about) that date.
     if (date) {
-        // 1. The club's own fixture on that date.
-        const ours = schedule.matches
+        const candidates = schedule.matches
             .filter((m) => m.home === input.team || m.away === input.team)
-            .map((m) => ({ m, off: Math.abs(easternDay(m.date) - date.day) }))
-            .filter((c) => c.off <= 1)
-        const against = opponent
-            ? ours.filter((c) => c.m.home === opponent || c.m.away === opponent)
-            : []
-        const pick = (against.length ? against : ours).sort((a, b) => a.off - b.off)[0]
+            .map((m) => {
+                const vs = m.home === input.team ? m.away : m.home
+                const named = opponent !== null && vs === opponent
+                return { m, vs, named, off: Math.abs(easternDay(m.date) - date.day) }
+            })
+            .filter(
+                (c) => c.off <= FIXTURE_SLACK || (c.named && c.off <= FIXTURE_SLACK_SAME_OPPONENT),
+            )
+            .sort((a, b) => Number(b.named) - Number(a.named) || a.off - b.off)
+        const pick = candidates[0]
         if (pick) {
-            const vs = pick.m.home === input.team ? pick.m.away : pick.m.home
-            if (opponent && vs !== opponent)
-                notes.push(`fixture opponent is ${vs}, title says ${opponent}`)
-            const season: ChartSeason =
-                stage === 'post' || (gws.length && date.day > gws.at(-1)!.end + 1)
-                    ? 'post'
-                    : 'regular'
+            if (opponent && pick.vs !== opponent) {
+                notes.push(`fixture opponent is ${pick.vs}, title says ${opponent}`)
+            }
+            const post = round !== null || (last !== undefined && date.day > last.end + 1)
             return done(
                 pick.m.week,
-                season,
+                post ? 'post' : 'regular',
                 'fixture',
-                `fixture ${describeMatch(pick.m)} → gameweek ${pick.m.week}`,
+                `fixture ${describeMatch(pick.m)} → week ${pick.m.week}`,
             )
         }
-
-        // 2. The gameweek whose dates it falls in.
-        if (gws.length) {
-            const byDate = weekByDate(date.day, gws)
-            if (!byDate) return done(1, 'pre', 'gameweek', 'before the first gameweek → preseason')
-            const season = stage === 'post' ? 'post' : byDate.season
-            return done(byDate.week, season, 'gameweek', `${byDate.how} → week ${byDate.week}`)
-        }
     }
 
-    // 3. The week number the club printed.
+    // 2. A preseason game: not in the feed, always week 1.
+    if (preseason) return done(1, 'pre', 'preseason', 'preseason marker → week 1')
+
+    // 3. A playoff round, counted on from the regular season's last week.
+    if (round && last) {
+        return done(
+            last.week + round,
+            'post',
+            'playoff-round',
+            `${round} week(s) after week ${last.week} → week ${last.week + round}`,
+        )
+    }
+
+    // 4. The week number the club printed.
     if (pw) {
-        return done(pw.week, stage ?? 'regular', 'printed-week', `printed week → ${pw.week}`)
+        return done(pw.week, round ? 'post' : 'regular', 'printed-week', `→ week ${pw.week}`)
     }
 
-    // 4. The printed date through the hardcoded season boundaries.
     if (date) {
+        // 5. The week whose games the date falls among.
+        if (last) {
+            const byDate = weekByDate(date.day, windows)
+            if (!byDate) return done(1, 'pre', 'gameweek', 'before the first games → preseason')
+            return done(
+                byDate.week,
+                byDate.season,
+                'gameweek',
+                `${byDate.how} → week ${byDate.week}`,
+            )
+        }
+        // 6. The printed date through the hardcoded season boundaries.
         const info = getDepthChartInfo(new Date(date.day * DAY_MS + 12 * 60 * 60 * 1000))
         return done(
             info.week,
-            stage ?? info.season,
+            round ? 'post' : info.season,
             'date-math',
             `no gameweeks for ${input.year}; date math → week ${info.week}`,
         )
