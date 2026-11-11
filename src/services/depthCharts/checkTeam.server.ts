@@ -1,8 +1,7 @@
 import { db } from '~/lib/db.server'
 import { isPermanentError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
-import { currentGameweek } from '~/services/gamezone/gameweeks.server'
-import { getDepthChartInfo } from './season.server'
+import { weeksForNewCharts } from './chartWeek.server'
 import { archiveChartFiles } from './archiveFiles.server'
 import { diffSnapshot } from './diffSnapshot.server'
 import { parseChartPositions } from './parsePositions.server'
@@ -113,13 +112,14 @@ export async function checkTeam(
         return fail(verdict.reason, 'REJECTED')
     }
 
-    // Week comes from the Game Zone schedule when we have it — the gameweek
-    // lineups are being set for — and falls back to date math only for a season
-    // the feed has not given us yet. The hardcoded boundaries were wrong by a
-    // day in 2026 and drift every year.
-    const info = getDepthChartInfo(new Date())
-    const week = (await currentGameweek(year))?.week ?? info.week
     const added = verdict.kind === 'first-snapshot' ? [] : verdict.diff.added
+
+    // Each chart's week is read from what the club printed — the game's date,
+    // matched to the schedule (chartWeek.ts has the precedence). The week it
+    // was first SEEN is only the fallback for a chart that says nothing: a
+    // chart found late, as in the November 2026 backfill, belongs to its game,
+    // not to the week the scraper caught up.
+    const weeks = await weeksForNewCharts(teamId, year, added)
 
     await db.$transaction(async (tx) => {
         const saved = await tx.depthChartList.upsert({
@@ -127,7 +127,8 @@ export async function checkTeam(
             update: { value: items },
             create: { teamId, year, value: items },
         })
-        for (const item of added) {
+        for (const [i, item] of added.entries()) {
+            const { season, week } = weeks[i]
             await tx.depthChart.create({
                 data: {
                     teamId,
@@ -135,7 +136,7 @@ export async function checkTeam(
                     title: item.title,
                     value: item.href,
                     year,
-                    season: info.season,
+                    season,
                     week,
                 },
             })
