@@ -231,6 +231,22 @@ describe('capturePbp', () => {
         expect(isPermanentError(await failure({ '1001': gone, '1002': down }))).toBe(false)
     })
 
+    it('keeps a 4xx mixed with a non-HTTP failure retryable', async () => {
+        await seed()
+        // An unknown fixture answers 200 with status UNAVAILABLE: a plain,
+        // unclassified failure, so the run as a whole stays transient.
+        const unavailable = JSON.stringify({ data: { status: { status: 'UNAVAILABLE' } } })
+        const err = await capture({
+            '1001': new Response('not found', { status: 404 }),
+            '1002': { pbp: unavailable, scoreboard: unavailable },
+        }).then(
+            () => null,
+            (e: unknown) => e,
+        )
+        expect(String(err)).toMatch(/every fixture failed/)
+        expect(isPermanentError(err)).toBe(false)
+    })
+
     it('throws when the schedule yields no fixtures', async () => {
         await seed()
         const f = vi.fn(

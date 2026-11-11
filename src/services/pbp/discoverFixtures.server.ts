@@ -1,4 +1,3 @@
-import { HttpStatusError } from '~/lib/jobErrors.server'
 import { logger } from '~/lib/logger.server'
 
 const fileName = 'services/pbp/discoverFixtures'
@@ -182,7 +181,13 @@ export async function discoverFixtures(
     fetchImpl: typeof fetch = fetch,
 ): Promise<DiscoveredFixture[]> {
     const res = await fetchImpl(SCHEDULE_URL, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) throw new HttpStatusError(res.status, `schedule fetch failed: HTTP ${res.status}`)
+    // Deliberately NOT classified permanent, even on a 4xx. This one response
+    // decides the whole pbp-capture run, and play-by-play is perishable. A
+    // FAILED job still counts as "last enqueued" for the schedule, so failing
+    // on attempt 1 would keep a re-run of collect.sh from capturing for six
+    // hours. A cfl.ca 403/404 here can be a bot-wall or a deploy blip, so it
+    // takes the retry ladder like any other outage.
+    if (!res.ok) throw new Error(`schedule fetch failed: HTTP ${res.status}`)
 
     const fixtures = parseScheduleFixtures(await res.text())
     if (fixtures.length === 0) {

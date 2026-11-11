@@ -193,9 +193,13 @@ async function linkFixtureToMatch(
  * Throws when fixtures were attempted and NONE could be fetched. Individual
  * failures are tolerated — one bad fixture must not cost the season — but a
  * run where the feed failed for everything is an outage, and must surface in
- * jobHealth rather than record a success. When every one of those failures
- * was a 4xx — the feed routes have moved, as they did in 2026 — the throw is
- * permanent, so the job fails at once instead of retrying the same 404s.
+ * jobHealth rather than record a success. The throw is permanent only when
+ * every one of those failures was a 4xx. Genius answers 404 only for an
+ * unknown route version or customer scope, so that means our URLs are wrong
+ * and only a code change can fix them. Any other failure in the mix keeps it
+ * retryable. That includes an unknown fixture (HTTP 200, status UNAVAILABLE),
+ * an unknown widget (HTTP 500), and the 2026 retirement of the old tracker
+ * endpoint (HTTP 500 on every fixture).
  */
 export async function capturePbp(
     year: number,

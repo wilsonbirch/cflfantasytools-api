@@ -193,9 +193,20 @@ describe('checkTeam', () => {
         expect(r.permanent).toBe(true)
     })
 
-    it('skips a disabled source', async () => {
+    it('skips a disabled source, permanently', async () => {
         const team = await seedTeam({ enabled: false })
-        expect((await checkTeam(team.id, 2026, serve(CGY))).error).toMatch(/disabled/)
+        const r = await checkTeam(team.id, 2026, serve(CGY))
+        expect(r).toMatchObject({ status: 'FAILED', permanent: true })
+        expect(r.error).toMatch(/disabled/)
+    })
+
+    it('fails permanently when the club has no depth-chart source at all', async () => {
+        const team = await db.team.create({
+            data: { slug: 'no-source', abbreviation: 'NOS', name: 'No Source' },
+        })
+        const r = await checkTeam(team.id, 2026, serve(CGY))
+        expect(r).toMatchObject({ status: 'FAILED', permanent: true })
+        expect(r.error).toMatch(/no depth-chart source/)
     })
 })
 

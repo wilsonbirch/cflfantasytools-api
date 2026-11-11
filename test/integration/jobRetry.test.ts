@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { jobEnqueue, jobHasPending } from '~/dao/job.server'
 import { db } from '~/lib/db.server'
+import { __setAppSecretForTest } from '~/lib/signedLinks.server'
 import { JOB_HANDLERS } from '~/worker/handlers.server'
 import { tickOnce } from '~/worker/loop'
 
@@ -144,22 +145,84 @@ describe('job loop retry decision', () => {
         expect(row.error).toMatch(/requires a teamId/)
     })
 
-    it('pbp-capture: a 404 on the schedule page fails at once; a 503 retries', async () => {
-        stubFetch(() => new Response('gone', { status: 404 }))
-        const gone = await jobEnqueue('pbp-capture', { year: 2026 })
-        await tickOnce(JOB_HANDLERS)
-        expect(await db.job.findUniqueOrThrow({ where: { id: gone.id } })).toMatchObject({
-            status: 'FAILED',
-            attempts: 1,
-        })
+    it('403: fails the job on the first attempt, like any other permanent 4xx', async () => {
+        const { row } = await runOneTeamJob(403)
+        expect(row).toMatchObject({ status: 'FAILED', attempts: 1 })
+        expect(row.error).toMatch(/^permanent \(not retried\): team \d+: HTTP 403/)
+        expect(await jobHasPending()).toBe(false)
+    })
 
-        stubFetch(() => new Response('down', { status: 503 }))
-        const down = await jobEnqueue('pbp-capture', { year: 2026 })
-        await tickOnce(JOB_HANDLERS)
-        expect(await db.job.findUniqueOrThrow({ where: { id: down.id } })).toMatchObject({
-            status: 'PENDING',
-            attempts: 1,
+    it('a club with no depth-chart source fails for good: retrying reads the same row', async () => {
+        const team = await db.team.create({
+            data: { slug: 'no-source', abbreviation: 'NOS', name: 'No Source' },
         })
+        const fn = stubFetch(() => new Response('unexpected', { status: 500 }))
+        const job = await jobEnqueue('depth-chart-team', { teamId: team.id, year: 2026 })
+        await tickOnce(JOB_HANDLERS)
+        const row = await db.job.findUniqueOrThrow({ where: { id: job.id } })
+        expect(row).toMatchObject({ status: 'FAILED', attempts: 1 })
+        expect(row.error).toMatch(/permanent \(not retried\).*no depth-chart source/)
+        expect(fn).not.toHaveBeenCalled()
+    })
+
+    it('pbp-capture: a 4xx on the schedule page still takes the retry ladder', async () => {
+        // The one response that decides a whole perishable-data run, and a
+        // FAILED row would also keep the schedule from re-enqueueing it for
+        // six hours. So no status on the schedule fetch is treated as permanent.
+        for (const status of [404, 403, 503]) {
+            stubFetch(() => new Response('no', { status }))
+            const job = await jobEnqueue('pbp-capture', { year: 2026 })
+            await tickOnce(JOB_HANDLERS)
+            const row = await db.job.findUniqueOrThrow({ where: { id: job.id } })
+            expect(row).toMatchObject({ status: 'PENDING', attempts: 1 })
+            expect(row.error).toMatch(new RegExp(`schedule fetch failed: HTTP ${status}`))
+        }
+    })
+})
+
+describe('chart-alert handler', () => {
+    beforeEach(async () => {
+        process.env.RESEND_API_KEY = 'test-key'
+        process.env.RESEND_FROM_EMAIL = 'Alerts <alerts@alerts.example.com>'
+        __setAppSecretForTest('test-secret')
+    })
+
+    afterEach(() => {
+        delete process.env.RESEND_API_KEY
+        delete process.env.RESEND_FROM_EMAIL
+    })
+
+    async function alertJob(scrapeRunId: number) {
+        const team = await seedClub('https://club.test/charts/')
+        const account = await db.account.create({
+            data: {
+                email: `fan-${scrapeRunId}@example.com`,
+                password: 'x',
+                uuid: `u-${scrapeRunId}`,
+            },
+        })
+        await db.notificationSubscription.create({
+            data: { accountId: account.id, teamId: team.id, enabled: true },
+        })
+        return jobEnqueue('chart-alert', { teamId: team.id, scrapeRunId, added: 1, revised: 0 })
+    }
+
+    it('a batch Resend refuses with a 4xx fails the job for good', async () => {
+        stubFetch(() => new Response('{"message":"domain not verified"}', { status: 403 }))
+        const job = await alertJob(201)
+        await tickOnce(JOB_HANDLERS)
+        const row = await db.job.findUniqueOrThrow({ where: { id: job.id } })
+        expect(row).toMatchObject({ status: 'FAILED', attempts: 1 })
+        expect(row.error).toMatch(/^permanent \(not retried\): 1 of 1 sends failed/)
+    })
+
+    it('a 5xx from Resend takes the retry ladder', async () => {
+        stubFetch(() => new Response('{"message":"internal"}', { status: 500 }))
+        const job = await alertJob(202)
+        await tickOnce(JOB_HANDLERS)
+        const row = await db.job.findUniqueOrThrow({ where: { id: job.id } })
+        expect(row).toMatchObject({ status: 'PENDING', attempts: 1 })
+        expect(row.error).toBe('1 of 1 sends failed')
     })
 })
 
