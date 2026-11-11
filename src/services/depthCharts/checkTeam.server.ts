@@ -42,6 +42,11 @@ const asItems = (value: unknown): DepthChartItem[] | null =>
 // about a burst of stale ones.
 export const BACKFILL_THRESHOLD = 3
 
+export const BROWSER_REMOVED =
+    'browser scraping was removed, but this source still has requiresBrowser set: ' +
+    'clear it (scripts/syncTeamSourceConfig.ts or updateTeamSource) and check the ' +
+    'page is server-rendered'
+
 /**
  * Scrape one club, diff against its last snapshot, and persist what changed.
  *
@@ -78,13 +83,18 @@ export async function checkTeam(
     if (!isStrategy(source.strategy)) {
         return fail(`unknown strategy "${source.strategy}"`, 'FAILED', true)
     }
+    // The column outlives the feature until a later migration drops it. A row
+    // still flagged was configured for a client-rendered page; scraping it with
+    // a plain fetch would quietly read the wrong markup, so refuse instead.
+    // Permanent like the other config failures: no retry clears the flag.
+    if (source.requiresBrowser) return fail(BROWSER_REMOVED, 'FAILED', true)
 
     const list = await db.depthChartList.findUnique({ where: { teamId_year: { teamId, year } } })
     const previous = list ? asItems(list.value) : null
 
     let items: DepthChartItem[]
     try {
-        const doc = await fetchPage(source.url, source.requiresBrowser, fetchImpl)
+        const doc = await fetchPage(source.url, fetchImpl)
         items = extract(doc, source.strategy, source.config, new URL(source.url).origin)
         if (source.strategy === 'articleList') {
             items = await resolveArticlePdfs(

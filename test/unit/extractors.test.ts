@@ -91,10 +91,6 @@ describe('Ottawa specifics', () => {
         expect(items).toHaveLength(13)
         expect(items.at(-1)?.href).toMatch(/WK21\.DEPTHCHART\.pdf$/)
     })
-
-    it('needs no browser any more', () => {
-        expect(ott.requiresBrowser).toBe(false)
-    })
 })
 
 describe('tableRowCells options', () => {

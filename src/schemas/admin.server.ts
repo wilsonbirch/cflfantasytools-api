@@ -51,6 +51,15 @@ builder.prismaObject('Job', {
     }),
 })
 
+// Browser scraping was removed (every club page is server-rendered since the
+// 2026 platform move). The column stays until a later migration drops it, and
+// the web admin screen still reads and sends the field, so it stays here too —
+// deprecated and ignored. Every save writes false, so saving any field repairs
+// a stale row; rejecting true instead would break the form for a flagged row,
+// whose checked box sends true on every save.
+const BROWSER_DEPRECATION =
+    'Browser scraping was removed; every source is fetched with plain HTTP. A source with this set fails its scrape.'
+
 builder.prismaObject('TeamSource', {
     fields: (t) => ({
         id: t.exposeInt('id'),
@@ -58,7 +67,9 @@ builder.prismaObject('TeamSource', {
         url: t.exposeString('url'),
         strategy: t.exposeString('strategy'),
         config: t.expose('config', { type: 'JSON' }),
-        requiresBrowser: t.exposeBoolean('requiresBrowser'),
+        requiresBrowser: t.exposeBoolean('requiresBrowser', {
+            deprecationReason: BROWSER_DEPRECATION,
+        }),
         enabled: t.exposeBoolean('enabled'),
         lastOkAt: t.expose('lastOkAt', { type: 'DateTime', nullable: true }),
         lastError: t.exposeString('lastError', { nullable: true }),
@@ -74,7 +85,10 @@ const TeamSourceInput = builder.inputType('TeamSourceInput', {
         url: t.string(),
         strategy: t.string(),
         config: t.field({ type: 'JSON' }),
-        requiresBrowser: t.boolean(),
+        requiresBrowser: t.boolean({
+            description: 'Ignored. Every update writes false.',
+            deprecationReason: BROWSER_DEPRECATION,
+        }),
         enabled: t.boolean(),
     }),
 })
@@ -110,7 +124,6 @@ const teamSourcePatch = z.object({
         .refine(isStrategy, `strategy must be one of ${STRATEGIES.join(', ')}`)
         .optional(),
     config: z.record(z.string(), z.unknown()).optional(),
-    requiresBrowser: z.boolean().optional(),
     enabled: z.boolean().optional(),
 })
 
@@ -225,7 +238,13 @@ builder.mutationFields((t) => ({
             return db.teamSource.update({
                 ...query,
                 where: { id },
-                data: { ...rest, ...(config ? { config: config as Prisma.InputJsonObject } : {}) },
+                data: {
+                    ...rest,
+                    ...(config ? { config: config as Prisma.InputJsonObject } : {}),
+                    // The deprecated input is not in teamSourcePatch, so zod strips it.
+                    // Any save clears a stale flag that would otherwise fail the scrape.
+                    requiresBrowser: false,
+                },
             })
         },
     }),

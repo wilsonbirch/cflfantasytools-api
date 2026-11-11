@@ -48,7 +48,6 @@ async function main(): Promise<void> {
                 // TeamSeed.config is a plain object so src/data/teams.ts stays free of
                 // Prisma imports; it is JSON by construction.
                 config: t.config as Prisma.InputJsonValue,
-                requiresBrowser: t.requiresBrowser,
             },
         })
     }

@@ -208,6 +208,23 @@ describe('checkTeam', () => {
         expect(r).toMatchObject({ status: 'FAILED', permanent: true })
         expect(r.error).toMatch(/no depth-chart source/)
     })
+
+    it('fails a source still flagged requiresBrowser permanently, without fetching or touching the snapshot', async () => {
+        const team = await seedTeam({ requiresBrowser: true })
+        let fetched = 0
+        const counting = (async () => {
+            fetched++
+            return new Response(CGY)
+        }) as unknown as typeof fetch
+
+        const r = await checkTeam(team.id, 2026, counting)
+        expect(r).toMatchObject({ status: 'FAILED', permanent: true })
+        expect(r.error).toMatch(/browser scraping was removed/)
+        expect(fetched).toBe(0)
+        expect(await db.depthChartList.count()).toBe(0)
+        const run = await db.scrapeRun.findFirstOrThrow()
+        expect(run).toMatchObject({ status: 'FAILED', error: r.error })
+    })
 })
 
 describe('sweepAllTeams', () => {

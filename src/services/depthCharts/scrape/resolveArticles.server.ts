@@ -34,7 +34,7 @@ export async function resolveArticlePdfs(
             continue
         }
         try {
-            const doc = await fetchPage(page, false, fetchImpl)
+            const doc = await fetchPage(page, fetchImpl)
             const pdf = findArticlePdf(doc, cfg, new URL(page).origin)
             if (!pdf) {
                 logger.warn(fileName, `${page}: no chart PDF in the article`)

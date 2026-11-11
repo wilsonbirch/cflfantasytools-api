@@ -29,7 +29,7 @@ Run all of these before opening a PR — they mirror the five CI jobs exactly.
 | `npm run schema:print && git diff --exit-code schema.graphql` | SDL drift — breaks web + native codegen      |
 | `npm run test:coverage`                                       | unit + integration (Testcontainers Postgres) |
 | `npm run boot-smoke` / `npm run boot-smoke:worker`            | boot failures and the SIGTERM contract       |
-| `docker build -t cflfantasytools-api:ci .`                    | image assembly, incl. the Chromium install   |
+| `docker build -t cflfantasytools-api:ci .`                    | image assembly, incl. the poppler install    |
 
 Integration tests need a running Docker daemon; they spin up their own Postgres
 and refuse any database whose name doesn't end in `_test`.
@@ -73,7 +73,7 @@ driver-adapter based and holds no url, so the CLI needs the config to find
 `DATABASE_URL`. The engines directory is copied from the build stage and
 `chown`ed to `node` — the CLI refuses to start if it cannot write there, even
 when the engine is already present, and a deploy should not depend on reaching
-Prisma's CDN. Net cost is about 27MB on an image that already ships Chromium.
+Prisma's CDN. Net cost is about 27MB.
 
 The workflow carries no test jobs. `main` requires the five CI contexts and has
 `strict` on, so a commit only lands after that exact tree went green on its PR.
@@ -138,8 +138,10 @@ non-concurrent `CREATE INDEX` locks the table against writes while it builds,
 which is fine at this size but will not stay fine.
 
 Two process groups run from one image: `web` (GraphQL + `/health`) and `worker`.
-The worker's VM is 1GB rather than 512MB because it launches Chromium for club
-sites that need JS.
+The worker's VM is 1GB, a holdover from when it launched Chromium for a
+client-rendered club site. Every club page is now fetched with plain HTTP and
+the heaviest worker session measured about 320MB RSS, so it is due to drop to
+512MB after the 2026 Grey Cup collection (see `fly.toml`).
 
 ### Off by default: collect on demand
 

@@ -5,15 +5,14 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
-# The build stage only needs `prisma generate`; it never launches a browser, and
-# the runtime stage uses the system Chromium installed below rather than anything
-# downloaded here. Skipping the download keeps a browser out of this layer.
-#
-# This is load-bearing as of puppeteer 25: @puppeteer/browsers 3 dropped its
-# bundled `extract-zip` for `modern-tar`, so unpacking Chrome's .zip now needs a
-# system `unzip` — which node:*-bookworm-slim does not ship. Without this the
-# postinstall fails with "no zip archiver is available" and `npm ci` exits 1.
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+# OpenSSL here so the schema engine Prisma downloads during `npm ci` is the
+# debian-openssl-3.0.x build the runtime stage needs. Without it Prisma detects
+# no OpenSSL, fetches the openssl-1.1.x engine, and the release command's
+# `migrate deploy` has to download the 3.0.x one from binaries.prisma.sh — and
+# exits 1 if it cannot reach it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Deps first for layer caching. prisma.config.ts + the schema are needed by the
 # postinstall generate.
@@ -23,21 +22,18 @@ RUN npm ci
 
 COPY . .
 
-# --- Runtime stage: prod-only deps, the generated client, and Chromium ---
+# --- Runtime stage: prod-only deps, the generated client, and poppler ---
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
-# Chromium for the depth-chart scraper. Most clubs' pages are parsed with a
-# plain fetch + linkedom; only the ones that need JS launch a browser, but the
-# worker and web share one image so it must be present. poppler-utils supplies
-# pdftotext, which turns the archived chart PDFs into the column-preserving
-# text the receiver-position parser reads.
+# poppler-utils supplies pdftotext, which turns the archived chart PDFs into
+# the column-preserving text the receiver-position parser reads. There is no
+# browser: every club's depth-chart page is fetched with plain HTTP and parsed
+# with linkedom.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium fonts-liberation ca-certificates poppler-utils \
+    && apt-get install -y --no-install-recommends ca-certificates openssl poppler-utils \
     && rm -rf /var/lib/apt/lists/*
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # --ignore-scripts skips postinstall: the prisma CLI is present now, but the
 # generated client is copied from the build stage rather than re-generated.
@@ -59,6 +55,9 @@ COPY --from=build /app/prisma.config.ts ./
 # against a root-owned /app, and a deploy should not depend on the network
 # reaching Prisma's CDN anyway. Taken from the build stage, which did download it.
 COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
+# Fail the build, not the release, if the copied engine does not match this
+# stage's OpenSSL 3.0 (see the build stage).
+RUN ls node_modules/@prisma/engines/schema-engine-*-openssl-3.0.x >/dev/null
 
 # The CLI refuses to start if it cannot write here, even when the engine is
 # already in place — it checks the directory before deciding it needs nothing.
