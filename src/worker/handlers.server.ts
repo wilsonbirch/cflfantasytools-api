@@ -1,3 +1,4 @@
+import { jobEnqueueChain } from '~/dao/job.server'
 import { syncGameZone } from '~/services/gamezone/syncGameZone.server'
 import { capturePbp } from '~/services/pbp/capturePbp.server'
 import { parseStoredGames } from '~/services/pbp/parsePlays.server'
@@ -28,9 +29,20 @@ export const JOB_HANDLERS: Record<string, JobHandler> = {
     // a parser bug, and the raw blob is retained so this is re-runnable.
     // `year` omitted parses every stored season, not just the current one —
     // which is what the legacy 2023/24 backfill will need.
+    //
+    // A re-parse deletes and recreates Play rows, and a recreated play has a
+    // null `epa` until epa-fit prices it. So a parse that touched anything puts
+    // epa-fit, then projections-fit (which reads epa), straight behind itself
+    // in the same session. Leaving them to their own schedules meant a
+    // PARSER_VERSION bump could leave every play in production unpriced for up
+    // to a day, and a projections fit in between built on all-zero EPA.
     'pbp-parse': async (payload) => {
         const { year, force } = asRecord(payload)
-        await parseStoredGames(typeof year === 'number' ? year : undefined, force === true)
+        const summary = await parseStoredGames(
+            typeof year === 'number' ? year : undefined,
+            force === true,
+        )
+        if (summary.games > 0) await jobEnqueueChain(['epa-fit', 'projections-fit'])
     },
     // Refits the expected-points surface and reprices every play from it.
     // Separate from pbp-parse for the same reason parse is separate from

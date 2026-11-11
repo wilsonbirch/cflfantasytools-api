@@ -10,6 +10,28 @@ export const jobEnqueue = async (
     runAt?: Date,
 ): Promise<Job> => db.job.create({ data: { kind, payload, ...(runAt ? { runAt } : {}) } })
 
+/**
+ * Queue `kinds` to run next, in the order given, behind whatever is running now.
+ *
+ * Deduped: a kind that already has a PENDING job reuses it rather than gaining a
+ * second. But the existing job is MOVED, not merely kept: the queue runs in
+ * (runAt, id) order, so a job enqueued at boot would otherwise run ahead of one
+ * enqueued here — a stale `projections-fit` from boot would run before a fresh
+ * `epa-fit`, which is the ordering this exists to prevent. Each kind gets a runAt
+ * a millisecond after the previous one, so the order holds whatever the ids.
+ */
+export const jobEnqueueChain = async (kinds: readonly string[]): Promise<void> => {
+    const base = Date.now()
+    for (const [i, kind] of kinds.entries()) {
+        const runAt = new Date(base + i + 1)
+        const { count } = await db.job.updateMany({
+            where: { kind, status: 'PENDING' },
+            data: { runAt },
+        })
+        if (count === 0) await db.job.create({ data: { kind, runAt } })
+    }
+}
+
 // Optimistic claim, safe through the transaction pooler (no advisory locks, no
 // $transaction): find the next due PENDING job, then flip it RUNNING guarded on
 // status — count === 1 means this session owns it. Correct for a single worker;

@@ -102,6 +102,61 @@ describe('repairLegacyPlays: ghost copies', () => {
         expect(plays).toHaveLength(2)
         expect(summary.duplicatesDropped).toBe(0)
     })
+
+    it('never merges overtime possessions, which can match on every field', () => {
+        // CGY–MTL 2024 (10798074), 19–19: consecutive overtime possessions each
+        // end in a 42-yard Paredes field goal, 3rd & 10 at the MTL 35, clock
+        // 00:00. Two real kicks; merging them took the game off its final.
+        const raw = rows('overtimeFieldGoals_10798074')
+        const kicks = raw.filter((p) => p.description.includes('from 42 yards GOOD'))
+        expect(ids(kicks)).toEqual(['26-3', '27-4'])
+        expect(kicks[0].description).toBe(kicks[1].description)
+
+        const { plays, dropped } = repairLegacyPlays(raw)
+        expect(dropped).toEqual([])
+        expect(plays).toHaveLength(raw.length)
+    })
+})
+
+describe('repairLegacyPlays: copies the clock cannot separate', () => {
+    it('keeps the convert after the kept touchdown, not the one after its ghost', () => {
+        // EDM 2023 (9889302). 32-2..32-9 repeat Edmonton's touchdown drive after
+        // the onside kick at 00:57; the convert is at 00:57 too, so both copies
+        // of it sit in time. The touchdown's ghost (32-8) is out of time and
+        // dropped, and the convert goes with the touchdown it follows.
+        const { dropped } = repairLegacyPlays(rows('convertTie_9889302'))
+        expect(ids(dropped)).toEqual([
+            '32-2',
+            '32-3',
+            '32-4',
+            '32-5',
+            '32-6',
+            '32-7',
+            '32-8',
+            '32-9',
+        ])
+    })
+
+    it('does the same when only the touchdown and its convert are copied', () => {
+        // BC–CGY 2023 (9889320): 16-2/16-3 repeat 15-2/15-3 behind the kickoff.
+        const { dropped } = repairLegacyPlays(rows('convertTie_9889320'))
+        expect(ids(dropped)).toEqual(['16-2', '16-3'])
+    })
+
+    it("keeps a convert in its own side's drive, not in the opponent's", () => {
+        // OTT–MTL 2023 (9889353): Maltos's convert is 22-7 in Montreal's drive and
+        // again 23-2 in a drive Ottawa owns, where it would count against Ottawa.
+        const { plays, dropped } = repairLegacyPlays(rows('strayConvert_9889353'))
+        expect(ids(dropped)).toEqual(['23-2'])
+        expect(plays.find((p) => p.id === '22-7')?.teamId).toBe(MTL)
+    })
+
+    it('puts the end of the second quarter before the start of the third', () => {
+        // BC 2023 (9888992): a Q2 00:00 run repeated as 13-2, after the Q3
+        // opening kickoff at 15:00. Read as the same instant, the ghost won.
+        const { dropped } = repairLegacyPlays(rows('quarterBoundary_9888992'))
+        expect(ids(dropped)).toEqual(['13-2'])
+    })
 })
 
 describe('repairLegacyPlays: subtypes the play text contradicts', () => {
@@ -119,6 +174,15 @@ describe('repairLegacyPlays: subtypes the play text contradicts', () => {
         expect(points(before)).toBe(6)
         expect(after.subType).toBeNull()
         expect(after.isScoring).toBe(false)
+        expect(points(after)).toBeNull()
+    })
+
+    it('gives a cleared pass the subtype the feed would have given it', () => {
+        // WPG–HAM 2023 (9889284): a 3-yard completion carried as a Touchdown. A
+        // Pass with no subtype is a combination the feed never produces.
+        const { before, after } = one('passTouchdownWithoutTouchdown_9889284')
+        expect(before.subType).toBe('Touchdown')
+        expect(after.subType).toBe('CompletePass')
         expect(points(after)).toBeNull()
     })
 
@@ -153,6 +217,27 @@ describe('repairLegacyPlays: subtypes the play text contradicts', () => {
         expect(points(before)).toBeNull()
         expect(after.subType).toBe('Single')
         expect(points(after)).toBe(1)
+    })
+})
+
+describe('repairLegacyPlays: a ghost the duplicate test cannot see', () => {
+    it('does not score a missed-field-goal single for a side that was not kicking', () => {
+        // OTT–MTL 2023 (9889353): Maltos's miss for Montreal is 1-9, and again
+        // 2-6 under Ottawa's id with the return yardage edited (0 yards, not
+        // 4), so it is not a duplicate. Both say SINGLE; only Montreal's counts.
+        // Maltos's later kicks in the same game are in, as in the full payload:
+        // they are what says which side he kicks for.
+        const { plays } = repairLegacyPlays(
+            chronological([
+                ...snippets['ghostMissedFieldGoal_9889353'],
+                ...snippets['strayConvert_9889353'],
+            ]),
+        )
+        const kick = (id: string) => plays.find((p) => p.id === id)
+        expect(kick('1-9')?.subType).toBe('Single')
+        expect(kick('1-9')?.teamId).toBe(MTL)
+        expect(kick('2-6')?.subType).toBe('Failed')
+        expect(kick('2-6')?.teamId).toBe(OTT)
     })
 })
 
