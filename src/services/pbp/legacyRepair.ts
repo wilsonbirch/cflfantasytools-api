@@ -182,24 +182,25 @@ function best<T>(items: T[], score: (item: T) => number): T[] {
  *     earlier in the game, or preceded by one from later. Each copy is checked
  *     against its nearest clocked neighbours that are not themselves duplicated
  *     — a whole run of ghosts must not vouch for itself.
- *  3. THE DRIVE'S OWNER. A copy stamped with the team that owns its drive
- *     belongs there; one stamped with the other team (a Montreal convert in an
- *     Ottawa drive, 9889353) is the stray.
  *
  * What is left is settled in `repairLegacyPlays` by contiguity, then by taking
  * the later copy.
+ *
+ * Deliberately NOT a test: whether a copy's team matches its drive's owner. A
+ * convert after a defensive touchdown is stamped with the scoring side and sits
+ * in the drive of the side that was scored on (Winnipeg's convert after its
+ * pick-six, 9889323), so that test keeps the ghost and drops the real row.
  */
 function candidatesOf(
     cluster: RawPlay[],
     chrono: RawPlay[],
     duplicated: Set<RawPlay>,
     teamOfPlayer: Map<string, string>,
-    owners: Map<number, string>,
 ): RawPlay[] {
     const who = leadPlayerOf(cluster[0].description)
     const team = cluster[0].type === 'Penalty' || !who ? undefined : teamOfPlayer.get(who)
     const onTeam = team === undefined ? [] : cluster.filter((c) => c.teamId === team)
-    let candidates = onTeam.length > 0 ? onTeam : cluster
+    const candidates = onTeam.length > 0 ? onTeam : cluster
 
     const anchor = (from: number, step: 1 | -1): number | null => {
         for (let i = from + step; i >= 0 && i < chrono.length; i += step) {
@@ -210,7 +211,7 @@ function candidatesOf(
         }
         return null
     }
-    candidates = best(candidates, (copy) => {
+    return best(candidates, (copy) => {
         const t = elapsed(copy)
         if (t === null) return 0
         const at = chrono.indexOf(copy)
@@ -218,7 +219,6 @@ function candidatesOf(
         const after = anchor(at, 1)
         return (before === null || before <= t ? 1 : 0) + (after === null || t <= after ? 1 : 0)
     })
-    return best(candidates, (copy) => (owners.get(driveOf(copy)) === copy.teamId ? 1 : 0))
 }
 
 const WIPED = /nullified|NO PLAY/
@@ -256,9 +256,7 @@ export function repairLegacyPlays(chrono: RawPlay[]): LegacyRepair {
     const owners = driveOwners(chrono)
 
     const kept = new Set<RawPlay>()
-    let open = clusters.map((cluster) =>
-        candidatesOf(cluster, chrono, duplicated, teamOfPlayer, owners),
-    )
+    let open = clusters.map((cluster) => candidatesOf(cluster, chrono, duplicated, teamOfPlayer))
     for (const c of open) if (c.length === 1) kept.add(c[0])
     open = open.filter((c) => c.length > 1)
 

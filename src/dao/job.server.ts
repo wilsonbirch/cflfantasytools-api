@@ -104,6 +104,19 @@ export const jobResetOrphaned = async (): Promise<number> => {
     return count
 }
 
+/**
+ * When the last successful run of `kind` finished, or null if none is on record
+ * (never ran, or pruned after 30 days). Callers must treat null as "not done".
+ */
+export const jobLastSucceededAt = async (kind: string): Promise<Date | null> => {
+    const row = await db.job.findFirst({
+        where: { kind, status: 'SUCCEEDED', finishedAt: { not: null } },
+        orderBy: { finishedAt: 'desc' },
+        select: { finishedAt: true },
+    })
+    return row?.finishedAt ?? null
+}
+
 export const jobLastCreatedAt = async (kind: string): Promise<Date | null> => {
     const row = await db.job.findFirst({
         where: { kind },

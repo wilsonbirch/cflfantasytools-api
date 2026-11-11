@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { chronological, groupIntoDrives, type RawPlay } from '~/services/pbp/drives'
+import { chronological, driveOutcome, groupIntoDrives, type RawPlay } from '~/services/pbp/drives'
 import { pointsForPlay } from '~/services/pbp/parseDescription'
 import { repairLegacyPlays } from '~/services/pbp/legacyRepair'
 
@@ -143,12 +143,30 @@ describe('repairLegacyPlays: copies the clock cannot separate', () => {
         expect(ids(dropped)).toEqual(['16-2', '16-3'])
     })
 
-    it("keeps a convert in its own side's drive, not in the opponent's", () => {
-        // OTT–MTL 2023 (9889353): Maltos's convert is 22-7 in Montreal's drive and
-        // again 23-2 in a drive Ottawa owns, where it would count against Ottawa.
-        const { plays, dropped } = repairLegacyPlays(rows('strayConvert_9889353'))
-        expect(ids(dropped)).toEqual(['23-2'])
-        expect(plays.find((p) => p.id === '22-7')?.teamId).toBe(MTL)
+    it('keeps the convert after a pick-six in the drive of the side that threw it', () => {
+        // CGY–WPG 2023 (9889323). Winnipeg kicks a field goal (21-7), then Houston
+        // returns an interception for a touchdown (22-1, in Calgary's drive) and
+        // Castillo converts: 22-2, stamped Winnipeg, in CALGARY's drive — the feed
+        // files a defensive score's convert there. 21-8 is its ghost, left on the
+        // end of Winnipeg's field-goal drive. Its team matching its drive's owner
+        // proves nothing: preferring that kept the ghost.
+        const { plays, dropped } = repairLegacyPlays(rows('pickSixConvert_9889323'))
+        expect(ids(dropped)).toEqual(['21-8'])
+
+        // So the labels: Winnipeg's drive scored its field goal and nothing more;
+        // Calgary's drive conceded the pick-six and its convert.
+        const teamOf = (id: string) =>
+            ({
+                [WPG]: { abbreviation: 'WPG', name: 'Winnipeg' },
+                [CGY]: { abbreviation: 'CGY', name: 'Calgary' },
+            })[id]
+        const outcome = (n: number) =>
+            driveOutcome(
+                groupIntoDrives(plays).find((d) => d.number === n)!,
+                teamOf,
+            ).points
+        expect(outcome(21)).toBe(3)
+        expect(outcome(22)).toBe(-7)
     })
 
     it('puts the end of the second quarter before the start of the third', () => {
